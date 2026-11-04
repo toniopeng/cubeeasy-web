@@ -259,6 +259,8 @@ export class CubeViewport {
     this.watchHomes = null
     this.watchStickers = null
     this.formulaGuard = false
+    this.animating = false
+    this.setGroupOpacity(1)
   }
 
   setPadEnabled(on: boolean) {
@@ -525,30 +527,19 @@ export class CubeViewport {
       axis === 'y' ? 1 : 0,
       axis === 'z' ? 1 : 0,
     )
-    // Apply model first (iOS applies then spins into place)
-    applyLocal(this.model, move)
-
+    // Capture the layer from the CURRENT visual pose (iOS: homes before applyLocal).
     const moving = this.cubies.filter((c) => Math.round(c.position[axis as Axis]) === layer)
-    // Rebuild start from current visual (pre-apply): reverse the model apply for animation start
-    // Simpler: animate from current positions toward final sync
-    // Re-sync then animate BACK from -angle — use start snapshots BEFORE apply:
-    // We already applied — so take final as end and animate from inverse.
-    const endPos = moving.map((c) => c.position.clone())
-    const endQuat = moving.map((c) => c.quaternion.clone())
-    // Snap to pre-turn by inverse rotation for animation start
-    const inv = new THREE.Quaternion().setFromAxisAngle(axisVec, -angle)
-    moving.forEach((c, i) => {
-      c.position.copy(endPos[i]).applyQuaternion(inv)
-      c.quaternion.copy(inv).multiply(endQuat[i])
-    })
     const startPos = moving.map((c) => c.position.clone())
     const startQuat = moving.map((c) => c.quaternion.clone())
+    // Model updates first; the visual spins the same short arc into place.
+    applyLocal(this.model, move)
 
     const dur = this.moveDurationMs(move, slow)
     const t0 = performance.now()
     await new Promise<void>((resolve) => {
       const step = () => {
         if (this.disposed || this.token.n !== my) {
+          this.syncFromModel(this.model)
           this.animating = false
           resolve()
           return
@@ -571,14 +562,58 @@ export class CubeViewport {
     })
   }
 
+  /** Cube-local face currently pointing along a pad/view face (iOS localFace). */
+  localFace(facing: Face): Face {
+    const position = this.camera.position.clone()
+    const length = position.length()
+    const toUser = length > 0.001 ? position.multiplyScalar(1 / length) : new THREE.Vector3(0, 0.4, 1)
+    const forward = toUser.clone().negate()
+    const hintedUp = this.camera.up.clone().normalize()
+    const right = new THREE.Vector3().crossVectors(forward, hintedUp).normalize()
+    const up = new THREE.Vector3().crossVectors(right, forward).normalize()
+    let direction: THREE.Vector3
+    switch (facing) {
+      case 'F':
+        direction = toUser
+        break
+      case 'B':
+        direction = toUser.clone().negate()
+        break
+      case 'U':
+        direction = up
+        break
+      case 'D':
+        direction = up.clone().negate()
+        break
+      case 'R':
+        direction = right
+        break
+      case 'L':
+        direction = right.clone().negate()
+        break
+    }
+    // World-space face normal after cubeRoot orientation
+    let best: Face = 'F'
+    let bestDot = -2
+    for (const face of Object.keys(FACE_NORMAL) as Face[]) {
+      const n = FACE_NORMAL[face]
+      const world = new THREE.Vector3(n.x, n.y, n.z).applyQuaternion(this.cubeRoot.quaternion).normalize()
+      const dot = world.dot(direction)
+      if (dot > bestDot) {
+        bestDot = dot
+        best = face
+      }
+    }
+    return best
+  }
+
   async userTurn(move: Move) {
     if (this.formulaGuard || !this.padEnabled || this.animating) return
     const was = isSolved(this.model)
     await this.enqueue(async () => {
       if (this.formulaGuard || !this.padEnabled) return
-      // Pad faces follow camera: for web, use view-relative via camera-facing approx = model view
-      // iOS uses localFace(facing). Approximate with viewToLocal when practice orbit idle.
-      await this.turn(move, true)
+      const local = withFace(move, this.localFace(move.face))
+      await this.turn(local, true)
       if (!was && isSolved(this.model) && this.padEnabled) this.onSolved?.()
     })
   }
@@ -707,6 +742,7 @@ export class CubeViewport {
 
   async fade(to: CubeState, prepare?: () => void) {
     const my = this.token.n
+    this.setGroupOpacity(1)
     await this.animateOpacity(0, this.teachMs(0.22), my)
     if (this.token.n !== my) return
     this.syncFromModel(to)
@@ -716,6 +752,7 @@ export class CubeViewport {
 
   async zoomSwap(to: CubeState, prepare?: () => void) {
     const my = this.token.n
+    this.setGroupOpacity(1)
     this.syncFromModel(solved())
     this.restoreColors()
     this.resetCamera()
@@ -739,6 +776,7 @@ export class CubeViewport {
 
   async zoomRevealScramble() {
     const my = this.token.n
+    this.setGroupOpacity(1)
     this.syncFromModel(solved())
     this.restoreColors()
     this.resetCamera()
@@ -772,6 +810,8 @@ export class CubeViewport {
     await new Promise<void>((resolve) => {
       const step = () => {
         if (this.token.n !== my) {
+          // Cancelled mid-fade must not leave the cube invisible.
+          if (to < 1) this.setGroupOpacity(1)
           resolve()
           return
         }

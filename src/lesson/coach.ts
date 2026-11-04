@@ -110,8 +110,14 @@ type Listener = () => void
 
 const GUIDE_CENTERS: Vec3[] = ALL_FACES.map((f) => FACE_NORMAL[f])
 
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
+}
+
+function movesEqual(a: Move[], b: Move[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((m, i) => m.face === b[i].face && m.suffix === b[i].suffix)
 }
 
 export class LessonCoach {
@@ -190,13 +196,23 @@ export class LessonCoach {
 
   start(step: number) {
     this.stopGuidance()
+    this.step = step
     this.practiceOrbit = false
     this.padUnlocked = false
     this.scene.setPadEnabled(false)
     this.scene.setPracticeEnabled(false)
+    this.celebrating = false
     this.emit()
     const current = this.token
-    void this.run(step, current)
+    void this.run(step, current).catch((err) => {
+      console.error('[LessonCoach] run failed', err)
+      if (this.token === current) {
+        this.inputLocked = false
+        this.playFace = { kind: 'play' }
+        this.advance = 'play'
+        this.emit()
+      }
+    })
   }
 
   stopGuidance(restoreColors = true) {
@@ -316,6 +332,12 @@ export class LessonCoach {
 
   private wait(): Promise<void> {
     return new Promise((resolve) => {
+      // Resume any stale waiter so a prior cycle cannot hang forever.
+      if (this.waiter) {
+        const stale = this.waiter
+        this.waiter = null
+        stale()
+      }
       this.waiter = resolve
       this.emit()
     })
@@ -444,8 +466,12 @@ export class LessonCoach {
   }
 
   private grayBefore(moves: Move[]) {
-    if (this.step === 7 && moves === ALGS.twist) {
+    if (this.step === 7 && movesEqual(moves, [...ALGS.twist])) {
       this.scene.restoreColors()
+      return
+    }
+    if (this.focusHomes.size === 0) {
+      // Nothing staged yet — leave the current teaching colors alone.
       return
     }
     const focus = [...this.focusHomes].map((k) => {
@@ -509,7 +535,7 @@ export class LessonCoach {
       if (this.token !== token) return false
       this.scene.reapplyTeachingColors()
     }
-    if (this.step === 7 && moves === ALGS.twist) this.scene.restoreColors()
+    if (this.step === 7 && movesEqual(moves, [...ALGS.twist])) this.scene.restoreColors()
     if (this.persistCornerMarks) this.refreshCornerStage()
     if (returnHome) return this.returnToMainAngle(token)
     await this.scene.settleMainAngle()
