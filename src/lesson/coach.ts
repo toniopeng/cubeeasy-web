@@ -390,6 +390,9 @@ export class LessonCoach {
   private showFirstLayer(plus: Vec3[] = []) {
     const pieces = [...this.solvedFirstLayerHomes(), ...plus]
     const keep = [...pieces, ...GUIDE_CENTERS]
+    // Keep formula focus locked on the solving piece (plus) so grayBefore
+    // during sexy cannot wander across the whole first layer.
+    if (plus.length) this.focusHomes = new Set(plus.map(key))
     this.scene.grayExcept(keep)
     this.emit()
   }
@@ -470,10 +473,7 @@ export class LessonCoach {
       this.scene.restoreColors()
       return
     }
-    if (this.focusHomes.size === 0) {
-      // Nothing staged yet — leave the current teaching colors alone.
-      return
-    }
+    // iOS always reapplies guideCenters ∪ focusHomes before a formula cycle.
     const focus = [...this.focusHomes].map((k) => {
       const [x, y, z] = k.split(',').map(Number)
       return v3(x, y, z)
@@ -861,6 +861,8 @@ export class LessonCoach {
           await this.scene.settleMainAngle()
           await this.scene.animateYaw(prep.popYaw)
           if (token !== this.token) return
+          this.stageFocus([home])
+          this.scene.grayExcept([...GUIDE_CENTERS, home])
           await this.playAuto([...ALGS.sexy], true)
           if (token !== this.token) return
           const again = cornerPrep(this.model, home)

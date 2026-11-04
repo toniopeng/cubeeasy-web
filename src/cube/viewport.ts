@@ -186,7 +186,7 @@ export class CubeViewport {
   }
 
   private homeKey(v: { x: number; y: number; z: number }) {
-    return `${v.x},${v.y},${v.z}`
+    return `${Math.round(v.x)},${Math.round(v.y)},${Math.round(v.z)}`
   }
 
   private stickerKey(s: Sticker) {
@@ -314,15 +314,16 @@ export class CubeViewport {
   private syncColors() {
     for (const c of this.cubies) {
       const home = c.userData.home
-      const hk = `${home.x},${home.y},${home.z}`
+      // Integer keys — avoid float noise on Vector3 home ids.
+      const hk = `${Math.round(home.x)},${Math.round(home.y)},${Math.round(home.z)}`
       for (const [face, mesh] of c.userData.stickers) {
         const mat = mesh.material as THREE.MeshPhysicalMaterial
         let lit = true
         if (this.watchStickers) {
           lit = this.watchStickers.has(`${hk}:${face}`)
         } else if (this.watchHomes) {
-          const isCenter = Math.abs(home.x) + Math.abs(home.y) + Math.abs(home.z) === 1
-          lit = this.watchHomes.has(hk) || isCenter
+          // Exact keep set only (coach passes GUIDE_CENTERS explicitly) — iOS grayExcept.
+          lit = this.watchHomes.has(hk)
         }
         mat.color = faceColor(face, !lit)
       }
@@ -780,7 +781,11 @@ export class CubeViewport {
     this.syncFromModel(solved())
     this.restoreColors()
     this.resetCamera()
+    // Clear any leftover teaching gray / orbit tip so Reset always starts clean.
+    this.cubeRoot.quaternion.identity()
+    this.applyOrientationInstant()
     const startD = this.distance
+    // Zoom in on the solved cube (iOS close = 0.62× rest).
     await this.lerpDistance(startD, startD * 0.62, 480, my)
     if (this.token.n !== my) return
     const scrambled = solved()
@@ -788,7 +793,36 @@ export class CubeViewport {
     normalizeOrientation(scrambled)
     this.syncFromModel(scrambled)
     this.restoreColors()
-    await this.lerpDistance(this.distance, startD, 640, my)
+    // Zoom back out while the cube spins a full 360° yaw — the flourish Tony
+    // expects on Reset (free 360° orbit then stays available until Start).
+    await Promise.all([
+      this.lerpDistance(this.distance, startD, 720, my),
+      this.spinCubeYaw(Math.PI * 2, 720, my),
+    ])
+    if (this.token.n !== my) return
+    this.applyOrientationInstant()
+  }
+
+  /** Animate cubeRoot through `angle` radians of world-Y spin (Reset flourish). */
+  private async spinCubeYaw(angle: number, dur: number, my: number) {
+    const base = this.cubeRoot.quaternion.clone()
+    const axis = new THREE.Vector3(0, 1, 0)
+    const t0 = performance.now()
+    await new Promise<void>((resolve) => {
+      const step = () => {
+        if (this.token.n !== my) {
+          resolve()
+          return
+        }
+        const k = Math.min(1, (performance.now() - t0) / dur)
+        const e = easeSmooth(k)
+        const q = new THREE.Quaternion().setFromAxisAngle(axis, angle * e)
+        this.cubeRoot.quaternion.copy(q).multiply(base)
+        if (k < 1) requestAnimationFrame(step)
+        else resolve()
+      }
+      requestAnimationFrame(step)
+    })
   }
 
   private setGroupOpacity(o: number) {
@@ -846,16 +880,28 @@ export class CubeViewport {
   }
 
   async pulseStickers(stickers: Sticker[], times = 2) {
-    const unique = stickers
+    const seen = new Set<string>()
+    const unique: Sticker[] = []
+    for (const s of stickers) {
+      const k = this.stickerKey(s)
+      if (seen.has(k)) continue
+      seen.add(k)
+      unique.push(s)
+    }
     if (!unique.length) return
     const my = this.token.n
     for (let t = 0; t < times; t++) {
       if (this.token.n !== my) return
+      // Gray the target stickers (other stickers keep current teaching colors).
       this.paint(unique, true)
       if (!(await sleep(380, this.token, my))) return
+      if (this.token.n !== my) return
+      // Own color again.
       this.paint(unique, false)
       if (!(await sleep(420, this.token, my))) return
     }
+    // Re-assert grayExcept / focus lock so a pulse never leaves stray lit tiles.
+    this.syncColors()
   }
 
   private paint(stickers: Sticker[], gray: boolean) {
