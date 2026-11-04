@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
-import { Home } from './pages/Home'
 import { Learn } from './pages/Learn'
 import { Pricing } from './pages/Pricing'
 import { Support } from './pages/Support'
@@ -10,8 +9,8 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route index element={<Home />} />
-        <Route path="learn" element={<Learn />} />
+        <Route index element={<Learn />} />
+        <Route path="learn" element={<Navigate to="/" replace />} />
         <Route path="pricing" element={<Pricing />} />
         <Route path="support" element={<Support />} />
         <Route path="privacy" element={<Privacy />} />

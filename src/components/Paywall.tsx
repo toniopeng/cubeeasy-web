@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LIFETIME_PRICE_LABEL, PRODUCT_NAME, FREE_RUNS } from '../data/course'
+import { LIFETIME_PRICE_LABEL } from '../data/course'
 import { openCheckout, paddleConfigured } from '../lib/paddle'
 
 type Props = {
@@ -8,6 +8,7 @@ type Props = {
   onUnlockDemo: () => void
 }
 
+/** Matches iOS PaywallView: Unlock CubeEasy, yellow Unlock, Restore, Not now. */
 export function Paywall({ open, onClose, onUnlockDemo }: Props) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -36,46 +37,32 @@ export function Paywall({ open, onClose, onUnlockDemo }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="paywall-title">
-      <div className="modal paywall">
-        <button className="modal-x" onClick={onClose} aria-label="Close">
-          ×
-        </button>
-        <div className="paywall-badge">Lifetime</div>
-        <h2 id="paywall-title">{PRODUCT_NAME}</h2>
-        <p className="lead">
-          You used your {FREE_RUNS} free course runs. Unlock unlimited practice forever —
-          same 7-step method, no subscription.
-        </p>
-        <div className="price-row">
-          <span className="price">{LIFETIME_PRICE_LABEL}</span>
-          <span className="muted">one-time · via Paddle</span>
+    <div className="paywall-overlay" role="dialog" aria-modal="true" aria-labelledby="paywall-title">
+      <div className="paywall-card">
+        <div className="paywall-head">
+          <h2 id="paywall-title">Unlock CubeEasy</h2>
+          <button className="paywall-x" onClick={onClose} aria-label="Not now">
+            ×
+          </button>
         </div>
-        <ul className="checklist">
-          <li>Unlimited course runs</li>
-          <li>All 7 beginner steps + Play cycles</li>
-          <li>Works on phone & desktop</li>
-          <li>No monthly fee</li>
-        </ul>
-        <button className="btn btn-primary btn-block" disabled={busy} onClick={checkout}>
-          {busy ? 'Opening checkout…' : configured ? `Checkout — ${LIFETIME_PRICE_LABEL}` : `Checkout — ${LIFETIME_PRICE_LABEL} (sandbox)`}
+        <p className="paywall-body">
+          Two free runs are done. Unlock the course of life. One purchase, no subscription, no ads.
+        </p>
+        <button className="paywall-unlock" disabled={busy} onClick={checkout}>
+          {busy ? '…' : `Unlock · ${LIFETIME_PRICE_LABEL}`}
         </button>
         {!configured && (
-          <div className="sandbox-box">
-            <strong>Paddle sandbox placeholder</strong>
-            <p>
-              Live Overlay needs <code>VITE_PADDLE_CLIENT_TOKEN</code> +{' '}
-              <code>VITE_PADDLE_PRICE_ID</code>. For this preview you can simulate unlock:
-            </p>
-            <button className="btn btn-ghost btn-block" onClick={onUnlockDemo}>
-              Simulate successful purchase
-            </button>
-          </div>
+          <button className="paywall-restore" onClick={onUnlockDemo}>
+            Simulate purchase (sandbox)
+          </button>
         )}
-        {note && <p className="note">{note}</p>}
-        <button className="linkish" onClick={onClose}>
+        <button className="paywall-restore" onClick={() => setNote('Restore is available after Paddle is connected.')}>
+          Restore Purchases
+        </button>
+        <button className="paywall-notnow" onClick={onClose}>
           Not now
         </button>
+        {note && <p className="paywall-note">{note}</p>}
       </div>
     </div>
   )

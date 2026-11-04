@@ -9,45 +9,36 @@ export function Pricing() {
   const ent = loadEntitlement()
 
   return (
-    <div className="page narrow">
-      <p className="eyebrow">Pricing</p>
-      <h1>Simple Lifetime unlock</h1>
-      <p className="lead">
-        {FREE_RUNS} full course runs free. Then one payment — no subscription for the MVP.
+    <div className="page">
+      <p className="muted">Pricing</p>
+      <h1>Lifetime unlock</h1>
+      <p>
+        {FREE_RUNS} full course runs free. Then one payment — no subscription.
       </p>
-
-      <div className="price-card">
-        <div className="paywall-badge">Best for beginners</div>
-        <h2>Lifetime</h2>
-        <div className="price-row">
-          <span className="price">{LIFETIME_PRICE_LABEL}</span>
-          <span className="muted">USD · one-time</span>
-        </div>
-        <ul className="checklist">
-          <li>Unlimited beginner course runs</li>
-          <li>All 7 steps with Play cycles</li>
-          <li>Web access on phone & desktop</li>
-          <li>Checkout via Paddle (Merchant of Record)</li>
-        </ul>
-        {ent.isLifetime ? (
-          <Link className="btn btn-primary btn-block" to="/learn">
-            You’re unlocked — open course
-          </Link>
-        ) : (
-          <button className="btn btn-primary btn-block" onClick={() => setOpen(true)}>
-            Unlock Lifetime
-          </button>
-        )}
-        <p className="fine">iOS app Lifetime is $4.99 in the App Store (separate purchase).</p>
-      </div>
-
+      <p style={{ fontSize: '2rem', fontWeight: 800, margin: '0.5rem 0' }}>{LIFETIME_PRICE_LABEL}</p>
+      <p className="muted">USD · one-time via Paddle</p>
+      <ul>
+        <li>Unlimited beginner course runs</li>
+        <li>All 7 steps with Play cycles</li>
+        <li>Web on phone & desktop</li>
+      </ul>
+      {ent.isLifetime ? (
+        <Link className="btn btn-primary" to="/">Open course</Link>
+      ) : (
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>
+          Unlock Lifetime
+        </button>
+      )}
+      <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>
+        iOS app Lifetime is $4.99 in the App Store (separate purchase).
+      </p>
       <Paywall
         open={open}
         onClose={() => setOpen(false)}
         onUnlockDemo={() => {
           unlockLifetime(loadEntitlement())
           setOpen(false)
-          window.location.assign(`${import.meta.env.BASE_URL}learn?unlocked=1`)
+          window.location.assign(`${import.meta.env.BASE_URL}?unlocked=1`)
         }}
       />
     </div>

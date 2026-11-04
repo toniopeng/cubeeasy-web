@@ -71,7 +71,7 @@ export async function openCheckout(opts?: {
     settings: {
       displayMode: 'overlay',
       theme: 'dark',
-      successUrl: opts?.successUrl || `${window.location.origin}/learn?unlocked=1`,
+      successUrl: opts?.successUrl || `${window.location.origin}${import.meta.env.BASE_URL}?unlocked=1`,
     },
   })
   return { mode: 'paddle', opened: true }

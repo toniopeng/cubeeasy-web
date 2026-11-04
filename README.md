@@ -33,3 +33,18 @@ Static assets land in `dist/`.
 ## Brand
 
 Avoid Rubik/rubiks/rubix in titles, H1s, and keywords. Prefer “3×3”, “cube”, “beginner method”.
+
+## Live preview
+
+GitHub Pages: https://toniopeng.github.io/cubeeasy-web/
+
+Source: https://github.com/toniopeng/cubeeasy-web
+
+Build for Pages:
+
+```bash
+VITE_BASE=/cubeeasy-web/ npm run build
+# deploy dist/ to gh-pages branch root
+```
+
+Preferred custom domains (check at registrar before buy): `cubeeasy.io` looked free via RDAP (404); `cubeeasy.com` taken (Unstoppable). Don't block launch on domain.
