@@ -1,7 +1,7 @@
 import { COLORS, type Face, moveNotation, type Move } from '../cube/model'
 import { FORMULA_ROWS } from '../data/course'
 import {
-  FormulaIcon,
+  LastFormulaCube,
   MiddleSlideCard,
   PlaceCornersPattern,
   StepPreviewMini,
@@ -17,11 +17,11 @@ function chipInk(face: Face) {
 
 function FormulaChips({ moves }: { moves: Move[] }) {
   return (
-    <div className="formula-chips">
+    <div className="formula-chips sheet-chips">
       {moves.map((m, i) => (
         <span
-          key={`${m.face}-${i}`}
-          className="fchip"
+          key={`${m.face}-${i}-${moveNotation(m)}`}
+          className="fchip sheet-fchip"
           style={{ background: chipColor(m.face), color: chipInk(m.face) }}
         >
           {moveNotation(m)}
@@ -37,11 +37,8 @@ export function FormulasSheet({ open, onClose }: { open: boolean; onClose: () =>
     <div className="formulas-sheet" role="dialog" aria-modal="true" aria-label="Formulas">
       <div className="formulas-panel">
         <div className="formulas-toolbar">
-          <div className="formulas-title">
-            <FormulaIcon />
-            <span>Formulas</span>
-          </div>
-          <button className="paywall-x" onClick={onClose} aria-label="Close">
+          <div className="formulas-drag" aria-hidden />
+          <button className="formulas-close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
@@ -52,11 +49,11 @@ export function FormulasSheet({ open, onClose }: { open: boolean; onClose: () =>
                 {row.step != null ? (
                   <StepPreviewMini step={row.step} side={68} />
                 ) : (
-                  <div className="last-formula-cube" aria-hidden />
+                  <LastFormulaCube side={68} />
                 )}
-                {row.pattern === 'middleRight' && <MiddleSlideCard slide="right" sheet />}
-                {row.pattern === 'middleLeft' && <MiddleSlideCard slide="left" sheet />}
-                {row.pattern === 'yellow' && <YellowPatternRow horizontal large />}
+                {row.pattern === 'middleRight' && <MiddleSlideCard slide="right" active sheet />}
+                {row.pattern === 'middleLeft' && <MiddleSlideCard slide="left" active sheet />}
+                {row.pattern === 'yellow' && <YellowPatternRow active={null} horizontal large />}
                 {row.pattern === 'corners' && <PlaceCornersPattern side={50.4} />}
               </div>
               <FormulaChips moves={[...row.moves]} />
