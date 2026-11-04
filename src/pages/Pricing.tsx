@@ -47,7 +47,7 @@ export function Pricing() {
         onUnlockDemo={() => {
           unlockLifetime(loadEntitlement())
           setOpen(false)
-          window.location.href = '/learn?unlocked=1'
+          window.location.assign(`${import.meta.env.BASE_URL}learn?unlocked=1`)
         }}
       />
     </div>
