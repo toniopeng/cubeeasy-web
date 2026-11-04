@@ -1,24 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Paywall } from '../components/Paywall'
 import { FormulasSheet } from '../components/FormulasSheet'
-import {
-  COLORS,
-  type Face,
-  applyMoves,
-  formulaForStep,
-  moveNotation,
-  type Move,
-  parseMoves,
-  preparedForStep,
-  randomScramble,
-  solved,
-} from '../cube/model'
-import {
-  CubeViewport,
-  SPEED_LABEL,
-  type TeachSpeed,
-} from '../cube/viewport'
+import { COLORS, type Face, type Move, moveNotation, parseMoves } from '../cube/model'
+import { CubeViewport } from '../cube/viewport'
+import { LessonCoach, type CoachSnapshot, type MiddleSlide } from '../lesson/coach'
 import {
   FormulaIcon,
   LayerGlyph,
@@ -39,10 +25,6 @@ import { LIFETIME_PRICE_LABEL } from '../data/course'
 
 const MOVE_TOKENS = ["U", "U'", "R", "R'", "L", "L'", "F", "F'", "D", "D'"] as const
 
-const SPEEDS: TeachSpeed[] = ['slow', 'normal', 'fast', 'faster']
-
-type Phase = 'idle' | 'ready' | 'playing' | 'awaitOk'
-
 function chipBg(face: Face) {
   return COLORS[face]
 }
@@ -50,53 +32,66 @@ function chipInk(face: Face) {
   return face === 'L' || face === 'B' ? '#fff' : COLORS.ink
 }
 
+const IDLE: CoachSnapshot = {
+  step: 0,
+  playFace: { kind: 'play' },
+  advance: 'start',
+  crossCase: null,
+  crossUps: [],
+  showCrossCards: false,
+  middleSlide: null,
+  showMiddleSlides: false,
+  showSideGhost: false,
+  matchedSideFaces: [],
+  showCornerCycle: false,
+  practiceOrbit: true,
+  inputLocked: false,
+  caption: '',
+  celebrating: false,
+  cheer: 'none',
+  cheerID: 0,
+  padUnlocked: true,
+  speed: 'fast',
+  speedTitle: 'Fast',
+  playWillAct: true,
+}
+
 /**
- * One-page LessonScreen — layout + controls mirrored from iOS teaching-v51.
- * Teaching logic is a web-friendly Play/OK cycle (full SceneKit coach is approx.).
+ * One-page LessonScreen — wired to LessonCoach (iOS teaching-v51 port).
  */
 export function Learn() {
   const [params] = useSearchParams()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const vpRef = useRef<CubeViewport | null>(null)
+  const coachRef = useRef<LessonCoach | null>(null)
 
   const [ent, setEnt] = useState<EntitlementState>(() => loadEntitlement())
-  const [step, setStep] = useState(0)
-  const [phase, setPhase] = useState<Phase>('idle')
-  const [speed, setSpeed] = useState<TeachSpeed>('fast')
-  const [padUnlocked, setPadUnlocked] = useState(true)
-  const [practiceOrbit, setPracticeOrbit] = useState(true)
-  const [formulaMoves, setFormulaMoves] = useState<Move[]>([])
-  const [activeMove, setActiveMove] = useState<number | null>(null)
+  const [snap, setSnap] = useState<CoachSnapshot>(IDLE)
   const [showPaywall, setShowPaywall] = useState(false)
   const [showFormulas, setShowFormulas] = useState(false)
   const [pendingStep, setPendingStep] = useState<number | null>(null)
   const [titleIn, setTitleIn] = useState(false)
-  const [locked, setLocked] = useState(false)
-  const [showCross, setShowCross] = useState(false)
-  const [showMiddle, setShowMiddle] = useState(false)
-  const [showCorners, setShowCorners] = useState(false)
-  const [cheer, setCheer] = useState<'none' | 'piece' | 'step' | 'solved'>('none')
 
-  // Mount viewport
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const vp = new CubeViewport(canvas)
+    const coach = new LessonCoach(vp)
     vpRef.current = vp
-    // iOS home: solved cube at the teaching rest pose (Reset still scrambles).
-    vp.syncFromModel(solved())
-    vp.onSolved = () => {
-      if (step === 0 && padUnlocked) burst('solved')
-    }
+    coachRef.current = coach
+    setSnap(coach.snapshot())
+    const unsub = coach.subscribe(() => setSnap(coach.snapshot()))
     const ro = new ResizeObserver(() => vp.resize())
     if (canvas.parentElement) ro.observe(canvas.parentElement)
     requestAnimationFrame(() => setTitleIn(true))
     return () => {
+      unsub()
       ro.disconnect()
+      coach.stopGuidance()
       vp.dispose()
       vpRef.current = null
+      coachRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -106,31 +101,17 @@ export function Learn() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Course finish when celebrating solved after step 7
   useEffect(() => {
-    const vp = vpRef.current
-    if (!vp) return
-    vp.teachSpeed = speed
-    vp.practiceOrbit = practiceOrbit
-  }, [speed, practiceOrbit])
-
-  const burst = useCallback((level: 'piece' | 'step' | 'solved') => {
-    setCheer(level)
-    const ms = level === 'piece' ? 1500 : level === 'step' ? 1900 : 2600
-    window.setTimeout(() => setCheer('none'), ms)
-  }, [])
-
-  function cycleSpeed() {
-    setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length])
-  }
-
-  function cuesFor(s: number) {
-    setShowCross(s === 4)
-    setShowMiddle(s === 3)
-    setShowCorners(s === 6)
-  }
+    if (snap.celebrating && snap.step === 0) {
+      setEnt((e) => finishRun(e))
+    }
+  }, [snap.celebrating, snap.step])
 
   function begin(target: number) {
-    const restart = target === 1 && step > 1
+    const coach = coachRef.current
+    if (!coach) return
+    const restart = target === 1 && snap.step > 1
     const newRun = !ent.runInProgress || restart
     if (!ent.isLifetime && newRun && ent.startedRuns >= 2) {
       setPendingStep(target)
@@ -144,110 +125,48 @@ export function Learn() {
       setEnt(nextEnt)
     }
     setPendingStep(null)
-    startStep(target)
+    coach.start(target)
   }
 
-  function startStep(target: number) {
-    const vp = vpRef.current
-    if (!vp) return
-    setStep(target)
-    setPadUnlocked(false)
-    setPracticeOrbit(false)
-    setPhase('ready')
-    setLocked(false)
-    setActiveMove(null)
-    cuesFor(target)
-    const state = preparedForStep(target)
-    vp.restoreColors()
-    vp.syncFromModel(state)
-    vp.resetCamera()
-    const moves = formulaForStep(target)
-    setFormulaMoves(moves)
-  }
-
-  async function onAdvance() {
-    if (locked) return
-    if (step === 0) {
+  function onAdvance() {
+    const coach = coachRef.current
+    if (!coach) return
+    if (snap.step === 0) {
       begin(1)
       return
     }
-    if (phase === 'ready') {
-      // Play formula cycle
-      const vp = vpRef.current
-      if (!vp || formulaMoves.length === 0) return
-      setLocked(true)
-      setPhase('playing')
-      try {
-        await vp.animateMoves(formulaMoves, (i) => setActiveMove(i < 0 ? null : i))
-        setActiveMove(null)
-        setPhase('awaitOk')
-        burst(step === 7 ? 'solved' : 'piece')
-      } finally {
-        setLocked(false)
-      }
-      return
-    }
-    if (phase === 'awaitOk') {
-      if (step >= 7) {
-        setEnt(finishRun(ent))
-        burst('solved')
-        setStep(0)
-        setPhase('idle')
-        setPadUnlocked(true)
-        setPracticeOrbit(true)
-        setFormulaMoves([])
-        setShowCross(false)
-        setShowMiddle(false)
-        setShowCorners(false)
-        cuesFor(0)
-        return
-      }
-      startStep(step + 1)
-    }
+    coach.tapPlay()
   }
 
-  async function onReset() {
-    const vp = vpRef.current
-    if (!vp) return
-    setStep(0)
-    setPhase('idle')
-    setFormulaMoves([])
-    setActiveMove(null)
-    setLocked(true)
-    setPadUnlocked(false)
-    setPracticeOrbit(false)
-    setShowCross(false)
-    setShowMiddle(false)
-    setShowCorners(false)
-    vp.restoreColors()
-    const s = preparedForStep(1)
-    applyMoves(s, randomScramble(8))
-    vp.syncFromModel(s)
-    for (const m of randomScramble(10)) {
-      // eslint-disable-next-line no-await-in-loop
-      await vp.animateMove(m)
-    }
-    setPadUnlocked(true)
-    setPracticeOrbit(true)
-    setLocked(false)
+  function onReset() {
+    coachRef.current?.resetCube()
   }
 
   async function onPad(token: string) {
-    if (!padUnlocked || locked) return
+    if (!snap.padUnlocked) return
     const move = parseMoves(token)[0]
     if (!move) return
     await vpRef.current?.userTurn(move)
   }
 
-  const minimapStep = step >= 1 && step <= 7 ? step : 0
-  const showFormulaStrip = step !== 1 && formulaMoves.length > 1 && (phase === 'ready' || phase === 'playing' || phase === 'awaitOk')
-  const playDisabled = locked || (step > 0 && phase === 'playing')
+  function cycleSpeed() {
+    coachRef.current?.cycleSpeed()
+  }
+
+  const minimapStep = snap.step >= 1 && snap.step <= 7 ? snap.step : 0
+  const formulaMoves =
+    snap.playFace.kind === 'formula' && snap.step !== 1 ? snap.playFace.moves : ([] as Move[])
+  const activeMove = snap.playFace.kind === 'formula' ? snap.playFace.active : null
+  const showFormulaStrip = formulaMoves.length > 1
+  const playDisabled = snap.inputLocked || (snap.step > 0 && !snap.playWillAct)
 
   function layerSelected(layers: number) {
-    if (layers === 1) return step === 2
-    if (layers === 2) return step === 3
-    return step >= 4 && step <= 7
+    if (layers === 1) return snap.step === 2
+    if (layers === 2) return snap.step === 3
+    return snap.step >= 4 && snap.step <= 7
   }
+
+  const middleActive: MiddleSlide | null = snap.middleSlide
 
   return (
     <div className="lesson">
@@ -255,22 +174,22 @@ export function Learn() {
       <div className="lesson-col">
         <div className="viewport-wrap">
           <canvas ref={canvasRef} className="cube-canvas" />
-          {cheer !== 'none' && <div className={`cheer cheer-${cheer}`} aria-hidden />}
+          {snap.cheer !== 'none' && <div className={`cheer cheer-${snap.cheer}`} aria-hidden />}
           {minimapStep > 0 && (
             <div className="overlay-tl">
               <StepPreviewMini step={minimapStep} side={92} />
             </div>
           )}
-          {(showCross || showMiddle || showCorners) && (
+          {(snap.showCrossCards || snap.showMiddleSlides || snap.showCornerCycle) && (
             <div className="overlay-bl">
-              {showCross && <YellowPatternRow active="dot" />}
-              {showMiddle && (
+              {snap.showCrossCards && <YellowPatternRow active={(snap.crossCase === 'dot' || snap.crossCase === 'L' || snap.crossCase === 'line') ? snap.crossCase : undefined} />}
+              {snap.showMiddleSlides && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <MiddleSlideCard slide="right" active />
-                  <MiddleSlideCard slide="left" />
+                  <MiddleSlideCard slide="right" active={middleActive === 'left'} />
+                  <MiddleSlideCard slide="left" active={middleActive === 'right'} />
                 </div>
               )}
-              {showCorners && <PlaceCornersPattern side={68} />}
+              {snap.showCornerCycle && <PlaceCornersPattern side={68} />}
             </div>
           )}
           <div className="overlay-br">
@@ -302,6 +221,7 @@ export function Learn() {
               <FormulaIcon />
             </button>
           </div>
+          {snap.caption ? <div className="caption-pill">{snap.caption}</div> : null}
         </div>
 
         <div className="advance-block">
@@ -309,7 +229,7 @@ export function Learn() {
             className="advance-btn"
             disabled={playDisabled}
             onClick={onAdvance}
-            aria-label={phase === 'awaitOk' ? 'OK' : step === 0 ? 'Start' : 'Play'}
+            aria-label={snap.step === 0 ? 'Start' : 'Play'}
           >
             <svg width="26" height="26" viewBox="0 0 24 24" fill="white" aria-hidden>
               <path d="M8 5v14l11-7z" />
@@ -341,8 +261,12 @@ export function Learn() {
         </div>
 
         <div className="utility-row">
-          <button className="util-btn util-speed" onClick={cycleSpeed} aria-label={`Speed, ${SPEED_LABEL[speed]}`}>
-            {SPEED_LABEL[speed]}
+          <button
+            className="util-btn util-speed"
+            onClick={cycleSpeed}
+            aria-label={`Speed, ${snap.speedTitle}`}
+          >
+            {snap.speedTitle}
           </button>
           <button className="util-btn util-reset" onClick={onReset}>
             Reset
@@ -354,8 +278,8 @@ export function Learn() {
             <button
               key={t}
               className="pad-btn"
-              disabled={!padUnlocked}
-              style={{ opacity: padUnlocked ? 1 : 0.38 }}
+              disabled={!snap.padUnlocked}
+              style={{ opacity: snap.padUnlocked ? 1 : 0.38 }}
               onClick={() => onPad(t)}
             >
               {t}
@@ -381,7 +305,7 @@ export function Learn() {
           if (ent.isLifetime && pendingStep != null) {
             const s = pendingStep
             setPendingStep(null)
-            startStep(s)
+            coachRef.current?.start(s)
           }
         }}
         onUnlockDemo={() => {
@@ -391,7 +315,7 @@ export function Learn() {
           if (pendingStep != null) {
             const s = pendingStep
             setPendingStep(null)
-            startStep(s)
+            coachRef.current?.start(s)
           }
         }}
       />
