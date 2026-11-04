@@ -337,7 +337,7 @@ export function StepPreviewMini({ step, side = 92 }: { step: number; side?: numb
     const canvas = ref.current
     if (!canvas) return
     let raf = 0
-    let yaw = 0
+    let yaw = 0.35
     const dpr = Math.min(2, window.devicePixelRatio || 1)
     canvas.width = side * dpr
     canvas.height = side * dpr
@@ -346,9 +346,9 @@ export function StepPreviewMini({ step, side = 92 }: { step: number; side?: numb
       const ctx = canvas.getContext('2d')!
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, side, side)
-      drawTeachingCube(ctx, side, step, spin ? yaw : 0)
+      drawTeachingCube(ctx, side, step, spin ? yaw : 0.55)
       if (spin) {
-        yaw += 0.018
+        yaw += 0.014
         if (yaw > Math.PI * 2) yaw -= Math.PI * 2
         raf = requestAnimationFrame(paint)
       }
@@ -381,7 +381,7 @@ export function LastFormulaCube({ side = 68 }: { side?: number }) {
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, side, side)
-    drawTeachingCube(ctx, side, 'twist', 0)
+    drawTeachingCube(ctx, side, 'twist', 0.55)
   }, [side])
   return (
     <canvas
@@ -396,28 +396,32 @@ export function LastFormulaCube({ side = 68 }: { side?: number }) {
 }
 
 type PreviewKind = number | 'twist'
+type FaceKey = 'U' | 'F' | 'R' | 'L' | 'B' | 'D'
+type Vec = { x: number; y: number; z: number }
 
-function litFor(step: PreviewKind, x: number, y: number, z: number): boolean {
+/** Match iOS StepGoal.colored homes. */
+function litHome(step: PreviewKind, x: number, y: number, z: number): boolean {
   if (step === 'twist' || step >= 7) return true
   const isCenter = Math.abs(x) + Math.abs(y) + Math.abs(z) === 1
   if (isCenter) return true
-  if (step <= 1) return y === 1 && (Math.abs(x) + Math.abs(z) === 1) // white cross edges (shown yellow-up as gray top in sheet? step1 rare)
+  if (step <= 1) {
+    // White cross edges (U face after white-up); rare on formulas sheet
+    return y === 1 && Math.abs(x) + Math.abs(z) === 1
+  }
   if (step === 2) return y === -1 // first layer
   if (step === 3) return y <= 0 // F2L
   if (step === 4 || step === 5) {
+    // F2L + yellow-cross edges + U center (center already true)
     if (y <= 0) return true
-    if (y === 1 && Math.abs(x) + Math.abs(z) === 1) return true // yellow cross edges
-    return false
+    return y === 1 && Math.abs(x) + Math.abs(z) === 1
   }
-  // step 6 place corners — F2L + top edges + top corners colored
-  if (y <= 0) return true
-  if (y === 1) return true
-  return false
+  // step 6: F2L + whole top layer
+  return true
 }
 
-function faceColorAt(
+function stickerColor(
   step: PreviewKind,
-  face: 'U' | 'F' | 'R' | 'L' | 'B' | 'D',
+  face: FaceKey,
   _x: number,
   y: number,
   _z: number,
@@ -430,8 +434,39 @@ function faceColorAt(
     if (face === 'R' && y === 1) return COLORS.F // green upper right
     return COLORS[face]
   }
-  // Standard solved palette for lit stickers
   return COLORS[face]
+}
+
+/** Camera-right axis for restDirection (6.2, 5.2, 7.6) — iOS viewRight. */
+const VIEW_RIGHT: Vec = (() => {
+  const fx = 6.2
+  const fz = 7.6
+  const len = Math.hypot(fx, fz)
+  return { x: -fz / len, y: 0, z: fx / len }
+})()
+
+function rotYaw(v: Vec, yaw: number): Vec {
+  const c = Math.cos(yaw)
+  const s = Math.sin(yaw)
+  return { x: v.x * c + v.z * s, y: v.y, z: -v.x * s + v.z * c }
+}
+
+function rotAxis(v: Vec, axis: Vec, angle: number): Vec {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  const dot = v.x * axis.x + v.y * axis.y + v.z * axis.z
+  return {
+    x: v.x * c + (axis.y * v.z - axis.z * v.y) * s + axis.x * dot * (1 - c),
+    y: v.y * c + (axis.z * v.x - axis.x * v.z) * s + axis.y * dot * (1 - c),
+    z: v.z * c + (axis.x * v.y - axis.y * v.x) * s + axis.z * dot * (1 - c),
+  }
+}
+
+function transformPoint(v: Vec, yaw: number, tip: number): Vec {
+  // Match iOS: tip white toward camera (whiteFaceTilt), then spin about Y.
+  let p = tip !== 0 ? rotAxis(v, VIEW_RIGHT, tip) : v
+  p = rotYaw(p, yaw)
+  return p
 }
 
 function drawTeachingCube(
@@ -440,74 +475,126 @@ function drawTeachingCube(
   step: PreviewKind,
   yaw: number,
 ) {
-  const scale = side * 0.148
+  // Steps 2–3 tip white toward camera like iOS StepPreview whiteFaceTilt ≈ 1.05.
+  const tip = step === 2 || step === 3 ? 1.05 : 0
+  const scale = side * 0.145
   const ox = side / 2
-  const oy = side / 2 + side * 0.02
-  const cy = Math.cos(yaw)
-  const sy = Math.sin(yaw)
-  const rot = (x: number, y: number, z: number) => {
-    const rx = x * cy + z * sy
-    const rz = -x * sy + z * cy
-    return { x: rx, y, z: rz }
-  }
+  const oy = side / 2 + side * 0.04
   const project = (x: number, y: number, z: number) => {
-    const p = rot(x, y, z)
+    const p = transformPoint({ x, y, z }, yaw, tip)
     return {
       x: ox + (p.x - p.z) * 0.866 * scale,
-      y: oy + (-p.y * 1.05 + (p.x + p.z) * 0.5 * 0.55) * scale,
-      depth: p.x + p.y + p.z,
+      y: oy + (-p.y * 1.02 + (p.x + p.z) * 0.5 * 0.52) * scale,
+      depth: p.x * 0.35 + p.y * 0.55 + p.z * 0.75,
+      p,
     }
   }
 
-  type Quad = { pts: { x: number; y: number }[]; fill: string; depth: number }
+  type Quad = { pts: { x: number; y: number }[]; fill: string; depth: number; round: number }
   const quads: Quad[] = []
-  const s = 0.42
+  const body = 0.46
+  const sticker = 0.34
 
   for (let x = -1; x <= 1; x++) {
     for (let y = -1; y <= 1; y++) {
       for (let z = -1; z <= 1; z++) {
         if (x === 0 && y === 0 && z === 0) continue
-        const lit = litFor(step, x, y, z)
-        const corners = [
-          [x - s, y - s, z - s],
-          [x + s, y - s, z - s],
-          [x + s, y + s, z - s],
-          [x - s, y + s, z - s],
-          [x - s, y - s, z + s],
-          [x + s, y - s, z + s],
-          [x + s, y + s, z + s],
-          [x - s, y + s, z + s],
-        ] as const
-        const P = corners.map(([a, b, c]) => project(a, b, c))
-        const depth = rot(x, y, z)
-        const d0 = depth.x + depth.y + depth.z
-        const faces: Array<{ idx: number[]; key: 'U' | 'F' | 'R' | 'L' | 'B' | 'D'; show: boolean }> = [
-          { idx: [4, 5, 6, 7], key: 'F', show: z === 1 },
-          { idx: [1, 0, 3, 2], key: 'B', show: z === -1 },
-          { idx: [5, 1, 2, 6], key: 'R', show: x === 1 },
-          { idx: [0, 4, 7, 3], key: 'L', show: x === -1 },
-          { idx: [7, 6, 2, 3], key: 'U', show: y === 1 },
-          { idx: [4, 5, 1, 0], key: 'D', show: y === -1 },
+        const lit = litHome(step, x, y, z)
+        // Plastic body (dark) — drawn as six faces slightly larger than stickers
+        const bodyFaces: Array<{ n: Vec; key: FaceKey }> = [
+          { n: { x: 0, y: 0, z: 1 }, key: 'F' },
+          { n: { x: 0, y: 0, z: -1 }, key: 'B' },
+          { n: { x: 1, y: 0, z: 0 }, key: 'R' },
+          { n: { x: -1, y: 0, z: 0 }, key: 'L' },
+          { n: { x: 0, y: 1, z: 0 }, key: 'U' },
+          { n: { x: 0, y: -1, z: 0 }, key: 'D' },
         ]
-        for (const f of faces) {
-          if (!f.show) continue
-          // After yaw, skip roughly back-facing for clarity
-          const n = rot(
-            f.key === 'R' ? 1 : f.key === 'L' ? -1 : 0,
-            f.key === 'U' ? 1 : f.key === 'D' ? -1 : 0,
-            f.key === 'F' ? 1 : f.key === 'B' ? -1 : 0,
-          )
-          // Keep faces that point somewhat toward camera (positive blend of +x/+y/+z view)
-          const toward = -n.z * 0.55 + n.y * 0.35 + n.x * 0.45
-          if (toward < -0.15 && f.key !== 'U' && f.key !== 'F' && f.key !== 'R') continue
-          const fill = faceColorAt(step, f.key, x, y, z, lit)
+        for (const bf of bodyFaces) {
+          const outward =
+            (bf.n.x !== 0 && bf.n.x === x) ||
+            (bf.n.y !== 0 && bf.n.y === y) ||
+            (bf.n.z !== 0 && bf.n.z === z)
+          if (!outward) continue
+          const cx = x + bf.n.x * body
+          const cy = y + bf.n.y * body
+          const cz = z + bf.n.z * body
+          const ux = bf.n.y === 0 && bf.n.z === 0 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 }
+          const u = {
+            x: ux.y * bf.n.z - ux.z * bf.n.y,
+            y: ux.z * bf.n.x - ux.x * bf.n.z,
+            z: ux.x * bf.n.y - ux.y * bf.n.x,
+          }
+          const uLen = Math.hypot(u.x, u.y, u.z) || 1
+          const U = { x: u.x / uLen, y: u.y / uLen, z: u.z / uLen }
+          const V = {
+            x: bf.n.y * U.z - bf.n.z * U.y,
+            y: bf.n.z * U.x - bf.n.x * U.z,
+            z: bf.n.x * U.y - bf.n.y * U.x,
+          }
+          const hs = body * 0.92
+          const corners = [
+            { x: cx + (-U.x - V.x) * hs, y: cy + (-U.y - V.y) * hs, z: cz + (-U.z - V.z) * hs },
+            { x: cx + (U.x - V.x) * hs, y: cy + (U.y - V.y) * hs, z: cz + (U.z - V.z) * hs },
+            { x: cx + (U.x + V.x) * hs, y: cy + (U.y + V.y) * hs, z: cz + (U.z + V.z) * hs },
+            { x: cx + (-U.x + V.x) * hs, y: cy + (-U.y + V.y) * hs, z: cz + (-U.z + V.z) * hs },
+          ]
+          const P = corners.map((c) => project(c.x, c.y, c.z))
+          const nWorld = transformPoint(bf.n, yaw, tip)
+          const toward = -nWorld.z * 0.55 + nWorld.y * 0.4 + nWorld.x * 0.4
+          if (toward < -0.2) continue
           quads.push({
-            pts: f.idx.map((i) => ({ x: P[i].x, y: P[i].y })),
-            fill,
-            depth: d0 + toward,
+            pts: P.map((p) => ({ x: p.x, y: p.y })),
+            fill: COLORS.body,
+            depth: P.reduce((a, p) => a + p.depth, 0) / 4 - 0.02,
+            round: 0,
           })
         }
-        // Plastic body hints for gaps — thin black outline via stroke later
+
+        // Stickers on outward faces
+        const stickerFaces: Array<{ n: Vec; key: FaceKey; show: boolean }> = [
+          { n: { x: 0, y: 0, z: 1 }, key: 'F', show: z === 1 },
+          { n: { x: 0, y: 0, z: -1 }, key: 'B', show: z === -1 },
+          { n: { x: 1, y: 0, z: 0 }, key: 'R', show: x === 1 },
+          { n: { x: -1, y: 0, z: 0 }, key: 'L', show: x === -1 },
+          { n: { x: 0, y: 1, z: 0 }, key: 'U', show: y === 1 },
+          { n: { x: 0, y: -1, z: 0 }, key: 'D', show: y === -1 },
+        ]
+        for (const sf of stickerFaces) {
+          if (!sf.show) continue
+          const nWorld = transformPoint(sf.n, yaw, tip)
+          const toward = -nWorld.z * 0.55 + nWorld.y * 0.4 + nWorld.x * 0.4
+          if (toward < -0.15) continue
+          const cx = x + sf.n.x * 0.48
+          const cy = y + sf.n.y * 0.48
+          const cz = z + sf.n.z * 0.48
+          const ux = sf.n.y === 0 && sf.n.z === 0 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 }
+          const u = {
+            x: ux.y * sf.n.z - ux.z * sf.n.y,
+            y: ux.z * sf.n.x - ux.x * sf.n.z,
+            z: ux.x * sf.n.y - ux.y * sf.n.x,
+          }
+          const uLen = Math.hypot(u.x, u.y, u.z) || 1
+          const U = { x: u.x / uLen, y: u.y / uLen, z: u.z / uLen }
+          const V = {
+            x: sf.n.y * U.z - sf.n.z * U.y,
+            y: sf.n.z * U.x - sf.n.x * U.z,
+            z: sf.n.x * U.y - sf.n.y * U.x,
+          }
+          const hs = sticker
+          const corners = [
+            { x: cx + (-U.x - V.x) * hs, y: cy + (-U.y - V.y) * hs, z: cz + (-U.z - V.z) * hs },
+            { x: cx + (U.x - V.x) * hs, y: cy + (U.y - V.y) * hs, z: cz + (U.z - V.z) * hs },
+            { x: cx + (U.x + V.x) * hs, y: cy + (U.y + V.y) * hs, z: cz + (U.z + V.z) * hs },
+            { x: cx + (-U.x + V.x) * hs, y: cy + (-U.y + V.y) * hs, z: cz + (-U.z + V.z) * hs },
+          ]
+          const P = corners.map((c) => project(c.x, c.y, c.z))
+          quads.push({
+            pts: P.map((p) => ({ x: p.x, y: p.y })),
+            fill: stickerColor(step, sf.key, x, y, z, lit),
+            depth: P.reduce((a, p) => a + p.depth, 0) / 4 + 0.04,
+            round: 1,
+          })
+        }
       }
     }
   }
@@ -515,14 +602,34 @@ function drawTeachingCube(
   quads.sort((a, b) => a.depth - b.depth)
   for (const q of quads) {
     ctx.beginPath()
-    ctx.moveTo(q.pts[0].x, q.pts[0].y)
-    for (let i = 1; i < q.pts.length; i++) ctx.lineTo(q.pts[i].x, q.pts[i].y)
-    ctx.closePath()
+    if (q.round && q.pts.length === 4) {
+      // Rounded sticker via quadratic midpoints
+      const pts = q.pts
+      const mid = (a: { x: number; y: number }, b: { x: number; y: number }, t = 0.22) => ({
+        x: a.x + (b.x - a.x) * t,
+        y: a.y + (b.y - a.y) * t,
+      })
+      const m01 = mid(pts[0], pts[1])
+      ctx.moveTo(m01.x, m01.y)
+      for (let i = 0; i < 4; i++) {
+        const b = pts[(i + 1) % 4]
+        const c = pts[(i + 2) % 4]
+        const to = mid(b, c)
+        ctx.quadraticCurveTo(b.x, b.y, to.x, to.y)
+      }
+      ctx.closePath()
+    } else {
+      ctx.moveTo(q.pts[0].x, q.pts[0].y)
+      for (let i = 1; i < q.pts.length; i++) ctx.lineTo(q.pts[i].x, q.pts[i].y)
+      ctx.closePath()
+    }
     ctx.fillStyle = q.fill
     ctx.fill()
-    ctx.strokeStyle = 'rgba(10,10,10,0.55)'
-    ctx.lineWidth = Math.max(0.6, side * 0.012)
-    ctx.stroke()
+    if (q.round) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'
+      ctx.lineWidth = Math.max(0.4, side * 0.008)
+      ctx.stroke()
+    }
   }
 }
 

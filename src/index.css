@@ -485,6 +485,7 @@ button { font: inherit; }
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.35);
   line-height: 1.1;
+  color: #1b1d22 !important; /* iOS Formulas: black ink on every face chip */
 }
 
 @media (max-width: 430px) {

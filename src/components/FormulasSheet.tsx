@@ -11,8 +11,9 @@ import {
 function chipColor(face: Face) {
   return COLORS[face]
 }
-function chipInk(face: Face) {
-  return face === 'L' || face === 'B' ? '#fff' : COLORS.ink
+function chipInk(_face: Face) {
+  // iOS Formulas sheet uses black ink on every face chip (including L/B).
+  return COLORS.ink
 }
 
 function FormulaChips({ moves }: { moves: Move[] }) {
