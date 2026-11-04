@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import {
   COLORS,
   FACE_NORMAL,
@@ -36,6 +37,8 @@ export const SPEED_LABEL: Record<TeachSpeed, string> = {
 }
 
 const BASE_TURN_MS = 520
+/** Same rest eye as iOS CubeSceneController.restDirection */
+const REST = new THREE.Vector3(6.2, 5.2, 7.6)
 
 type CubieMesh = THREE.Group & { userData: { home: THREE.Vector3; stickers: Map<Face, THREE.Mesh> } }
 
@@ -61,6 +64,28 @@ function stickerOrientation(face: Face): THREE.Quaternion {
   }
 }
 
+/** Rounded square sticker plane matching iOS SCNPlane cornerRadius 0.16 on 0.68. */
+function roundedStickerGeometry(size = 0.68, radius = 0.16): THREE.ShapeGeometry {
+  const shape = new THREE.Shape()
+  const hw = size / 2
+  const r = Math.min(radius, hw)
+  shape.moveTo(-hw + r, -hw)
+  shape.lineTo(hw - r, -hw)
+  shape.quadraticCurveTo(hw, -hw, hw, -hw + r)
+  shape.lineTo(hw, hw - r)
+  shape.quadraticCurveTo(hw, hw, hw - r, hw)
+  shape.lineTo(-hw + r, hw)
+  shape.quadraticCurveTo(-hw, hw, -hw, hw - r)
+  shape.lineTo(-hw, -hw + r)
+  shape.quadraticCurveTo(-hw, -hw, -hw + r, -hw)
+  return new THREE.ShapeGeometry(shape)
+}
+
+function restYawPitch() {
+  const s = new THREE.Spherical().setFromVector3(REST.clone().normalize())
+  return { yaw: s.theta, pitch: Math.PI / 2 - s.phi }
+}
+
 export class CubeViewport {
   readonly canvas: HTMLCanvasElement
   private renderer: THREE.WebGLRenderer
@@ -76,30 +101,39 @@ export class CubeViewport {
   private dragging = false
   private lastX = 0
   private lastY = 0
-  private yaw = 0.55
-  private pitch = 0.42
+  private yaw: number
+  private pitch: number
   private distance = 7.2
   teachSpeed: TeachSpeed = 'fast'
   model: CubeState = solved()
   onSolved: (() => void) | null = null
   private watchHomes: Set<string> | null = null
+  private stickerGeo = roundedStickerGeometry()
 
   constructor(canvas: HTMLCanvasElement) {
+    const rest = restYawPitch()
+    this.yaw = rest.yaw
+    this.pitch = rest.pitch
     this.canvas = canvas
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
+    this.renderer.toneMapping = THREE.NoToneMapping
     this.scene = new THREE.Scene()
-    this.camera = new THREE.PerspectiveCamera(32, 1, 0.05, 40)
+    this.camera = new THREE.PerspectiveCamera(35, 1, 0.05, 80)
     this.root = new THREE.Group()
     this.scene.add(this.root)
     this.root.add(this.pivot)
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.78)
+    // Match iOS installCamera lighting proportions (ambient 520, key 380, fill 190).
+    const ambient = new THREE.AmbientLight(0xfafafa, 0.72)
     this.scene.add(ambient)
-    const key = new THREE.DirectionalLight(0xffffff, 0.85)
-    key.position.set(0.6, 1.4, 0.2)
+    const key = new THREE.DirectionalLight(0xfffbf5, 0.78)
+    key.position.set(0.4, 1.2, 0.15)
     this.camera.add(key)
+    const fill = new THREE.DirectionalLight(0xebf2ff, 0.38)
+    fill.position.set(-1.4, -0.4, 0.2)
+    this.camera.add(fill)
     this.scene.add(this.camera)
 
     this.buildCubies()
@@ -113,6 +147,29 @@ export class CubeViewport {
     return `${v.x},${v.y},${v.z}`
   }
 
+  private plasticMat() {
+    return new THREE.MeshPhysicalMaterial({
+      color: COLORS.body,
+      roughness: 0.36,
+      metalness: 0.02,
+      clearcoat: 0.42,
+      clearcoatRoughness: 0.38,
+      specularIntensity: 0.16,
+    })
+  }
+
+  private stickerMat(face: Face) {
+    return new THREE.MeshPhysicalMaterial({
+      color: faceColor(face),
+      roughness: 0.32,
+      metalness: 0,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.34,
+      specularIntensity: 0.14,
+      side: THREE.FrontSide,
+    })
+  }
+
   private buildCubies() {
     this.cubies.forEach((c) => this.pivot.remove(c))
     this.cubies = []
@@ -122,14 +179,8 @@ export class CubeViewport {
           if (x === 0 && y === 0 && z === 0) continue
           const g = new THREE.Group() as CubieMesh
           const box = new THREE.Mesh(
-            new THREE.BoxGeometry(0.9, 0.9, 0.9),
-            new THREE.MeshPhysicalMaterial({
-              color: COLORS.body,
-              roughness: 0.36,
-              metalness: 0.02,
-              clearcoat: 0.42,
-              clearcoatRoughness: 0.38,
-            }),
+            new RoundedBoxGeometry(0.9, 0.9, 0.9, 3, 0.095),
+            this.plasticMat(),
           )
           g.add(box)
           const stickers = new Map<Face, THREE.Mesh>()
@@ -139,16 +190,7 @@ export class CubeViewport {
             const show =
               (n.x !== 0 && n.x === x) || (n.y !== 0 && n.y === y) || (n.z !== 0 && n.z === z)
             if (!show) continue
-            const plane = new THREE.Mesh(
-              new THREE.PlaneGeometry(0.68, 0.68),
-              new THREE.MeshPhysicalMaterial({
-                color: faceColor(face),
-                roughness: 0.32,
-                metalness: 0,
-                clearcoat: 0.3,
-                clearcoatRoughness: 0.34,
-              }),
-            )
+            const plane = new THREE.Mesh(this.stickerGeo, this.stickerMat(face))
             plane.position.set(n.x * 0.47, n.y * 0.47, n.z * 0.47)
             plane.quaternion.copy(stickerOrientation(face))
             g.add(plane)
@@ -181,7 +223,6 @@ export class CubeViewport {
     for (const c of this.cubies) {
       const home = c.userData.home
       const on = !this.watchHomes || this.watchHomes.has(`${home.x},${home.y},${home.z}`)
-      // Centers always colored when watching
       const isCenter = Math.abs(home.x) + Math.abs(home.y) + Math.abs(home.z) === 1
       const lit = on || (this.watchHomes && isCenter)
       for (const [face, mesh] of c.userData.stickers) {
@@ -212,9 +253,8 @@ export class CubeViewport {
   }
 
   private placeCamera() {
-    const eye = new THREE.Vector3(6.2, 5.2, 7.6).normalize().multiplyScalar(this.distance)
-    // Orbit around using yaw/pitch relative to teaching eye
-    const spherical = new THREE.Spherical().setFromVector3(eye)
+    const spherical = new THREE.Spherical()
+    spherical.radius = this.distance
     spherical.theta = this.yaw
     spherical.phi = Math.PI / 2 - this.pitch
     this.camera.position.setFromSpherical(spherical)
@@ -222,10 +262,22 @@ export class CubeViewport {
     this.camera.lookAt(0, 0, 0)
   }
 
+  /** iOS updateFit — keep the cube filling the portrait viewport. */
+  private updateFit(w: number, h: number) {
+    const fov = (this.camera.fov * Math.PI) / 180
+    const aspect = w / h
+    const verticalHalf = Math.tan(fov / 2)
+    const horizontalHalf = verticalHalf * Math.max(aspect, 0.05)
+    const limit = Math.min(verticalHalf, horizontalHalf)
+    const boundingRadius = 2.55
+    const comfort = 1.18
+    this.distance = (boundingRadius * comfort) / Math.max(limit, 0.08)
+  }
+
   resetCamera() {
-    this.yaw = 0.55
-    this.pitch = 0.42
-    this.distance = 7.2
+    const rest = restYawPitch()
+    this.yaw = rest.yaw
+    this.pitch = rest.pitch
     this.placeCamera()
   }
 
@@ -236,6 +288,8 @@ export class CubeViewport {
     this.renderer.setSize(w, h, false)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
+    this.updateFit(w, h)
+    this.placeCamera()
   }
 
   private bindInput() {

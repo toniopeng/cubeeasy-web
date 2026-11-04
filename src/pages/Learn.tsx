@@ -12,6 +12,7 @@ import {
   parseMoves,
   preparedForStep,
   randomScramble,
+  solved,
 } from '../cube/model'
 import {
   CubeViewport,
@@ -82,9 +83,8 @@ export function Learn() {
     if (!canvas) return
     const vp = new CubeViewport(canvas)
     vpRef.current = vp
-    const s = preparedForStep(1)
-    applyMoves(s, randomScramble(12))
-    vp.syncFromModel(s)
+    // iOS home: solved cube at the teaching rest pose (Reset still scrambles).
+    vp.syncFromModel(solved())
     vp.onSolved = () => {
       if (step === 0 && padUnlocked) burst('solved')
     }
@@ -311,7 +311,7 @@ export function Learn() {
             onClick={onAdvance}
             aria-label={phase === 'awaitOk' ? 'OK' : step === 0 ? 'Start' : 'Play'}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="white" aria-hidden>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="white" aria-hidden>
               <path d="M8 5v14l11-7z" />
             </svg>
           </button>
@@ -341,10 +341,10 @@ export function Learn() {
         </div>
 
         <div className="utility-row">
-          <button className="util-btn" onClick={cycleSpeed} aria-label={`Speed, ${SPEED_LABEL[speed]}`}>
+          <button className="util-btn util-speed" onClick={cycleSpeed} aria-label={`Speed, ${SPEED_LABEL[speed]}`}>
             {SPEED_LABEL[speed]}
           </button>
-          <button className="util-btn" onClick={onReset}>
+          <button className="util-btn util-reset" onClick={onReset}>
             Reset
           </button>
         </div>

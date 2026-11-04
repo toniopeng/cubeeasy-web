@@ -328,26 +328,129 @@ export function FormulaIcon() {
     <div className="formula-icon" aria-hidden>
       <img src={`${import.meta.env.BASE_URL}formulas-scramble.png`} alt="" width={28} height={32} />
       <div className="formula-bars">
-        <span style={{ background: COLORS.B, width: 14 }} />
-        <span style={{ background: COLORS.L, width: 11 }} />
-        <span style={{ background: COLORS.U, width: 8 }} />
+        {/* iOS FormulaIcon accent bars: blue, red, yellow */}
+        <span style={{ background: '#1a40c2', width: 14 }} />
+        <span style={{ background: '#c01a16', width: 11 }} />
+        <span style={{ background: '#fff200', width: 8 }} />
       </div>
     </div>
   )
 }
 
+/** Isometric mini plastic cube — 1/2/3 layers from the bottom, matching iOS LayerGlyph. */
 export function LayerGlyph({ layers }: { layers: 1 | 2 | 3 }) {
+  const ref = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    const size = 36
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    canvas.width = size * dpr
+    canvas.height = size * dpr
+    const ctx = canvas.getContext('2d')!
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, size, size)
+
+    // Camera-ish isometric matching restDirection (6.2, 5.2, 7.6)
+    const scale = 5.4
+    const ox = size / 2
+    const oy = size / 2 + 1
+    const project = (x: number, y: number, z: number) => {
+      const X = (x - z) * 0.866 * scale
+      const Y = (-y * 1.02 + (x + z) * 0.5 * 0.58) * scale
+      return { x: ox + X, y: oy + Y }
+    }
+
+    const body = '#0a0a0a'
+    const faceCols: Record<string, string> = {
+      U: '#fff200',
+      F: '#00e632',
+      R: '#ff7f00',
+      L: '#c01a16',
+      B: '#1a40c2',
+      D: '#f0f0f0',
+    }
+
+    const heights =
+      layers === 1 ? [-1] : layers === 2 ? [-1, 0] : ([-1, 0, 1] as number[])
+
+    type Quad = { pts: { x: number; y: number }[]; fill: string; depth: number }
+    const quads: Quad[] = []
+
+    for (const y of heights) {
+      for (let x = -1; x <= 1; x++) {
+        for (let z = -1; z <= 1; z++) {
+          if (x === 0 && y === 0 && z === 0) continue
+          const s = 0.42
+          const corners = [
+            [x - s, y - s, z - s],
+            [x + s, y - s, z - s],
+            [x + s, y + s, z - s],
+            [x - s, y + s, z - s],
+            [x - s, y - s, z + s],
+            [x + s, y - s, z + s],
+            [x + s, y + s, z + s],
+            [x - s, y + s, z + s],
+          ] as const
+          const P = corners.map(([a, b, c]) => project(a, b, c))
+          const depth = x + y + z
+          // body faces (approx)
+          const facesIdx = [
+            [4, 5, 6, 7], // F
+            [1, 0, 3, 2], // B
+            [5, 1, 2, 6], // R
+            [0, 4, 7, 3], // L
+            [7, 6, 2, 3], // U
+            [4, 5, 1, 0], // D
+          ]
+          const faceKeys = ['F', 'B', 'R', 'L', 'U', 'D']
+          const showFace = (face: string) => {
+            if (face === 'U') return y === Math.max(...heights)
+            if (face === 'D') return y === Math.min(...heights)
+            if (face === 'F') return z === 1
+            if (face === 'B') return z === -1
+            if (face === 'R') return x === 1
+            if (face === 'L') return x === -1
+            return false
+          }
+          for (let fi = 0; fi < 6; fi++) {
+            const key = faceKeys[fi]
+            const idx = facesIdx[fi]
+            const pts = idx.map((i) => P[i])
+            const fill = showFace(key) ? faceCols[key] : body
+            // skip back faces mostly
+            if (key === 'B' || key === 'L' || key === 'D') {
+              if (!showFace(key)) continue
+            }
+            quads.push({ pts, fill, depth: depth + (key === 'U' ? 0.3 : key === 'F' ? 0.2 : 0) })
+          }
+        }
+      }
+    }
+
+    quads.sort((a, b) => a.depth - b.depth)
+    for (const q of quads) {
+      ctx.beginPath()
+      ctx.moveTo(q.pts[0].x, q.pts[0].y)
+      for (let i = 1; i < q.pts.length; i++) ctx.lineTo(q.pts[i].x, q.pts[i].y)
+      ctx.closePath()
+      ctx.fillStyle = q.fill
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+      ctx.lineWidth = 0.4
+      ctx.stroke()
+    }
+  }, [layers])
+
   return (
-    <div className="layer-glyph" data-layers={layers} aria-hidden>
-      {[0, 1, 2].map((row) =>
-        row < layers ? (
-          <div key={row} className="lg-row">
-            {[0, 1, 2].map((c) => (
-              <span key={c} />
-            ))}
-          </div>
-        ) : null,
-      )}
-    </div>
+    <canvas
+      ref={ref}
+      className="layer-glyph"
+      data-layers={layers}
+      width={36}
+      height={36}
+      style={{ width: 36, height: 36 }}
+      aria-hidden
+    />
   )
 }

@@ -78,7 +78,7 @@ button { font: inherit; }
 }
 .lesson-col {
   position: relative; z-index: 1;
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; flex-direction: column; gap: 8px;
   height: 100%;
   padding: 8px 10px 6px;
   max-width: 560px;
@@ -115,6 +115,7 @@ button { font: inherit; }
 
 .brand-capsule {
   font-size: 23px; font-weight: 800; letter-spacing: -0.02em;
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
   color: var(--ink);
   padding: 8px 16px;
   background: rgba(255,255,255,0.92);
@@ -132,9 +133,15 @@ button { font: inherit; }
   background: rgba(255,255,255,0.92);
   border-radius: 999px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
 }
 .formula-icon { display: flex; align-items: center; gap: 4px; }
-.formula-icon img { display: block; border-radius: 4px; object-fit: cover; }
+.formula-icon img {
+  display: block; width: 28px; height: 32px;
+  border-radius: 4px; object-fit: cover; flex: 0 0 auto;
+}
 .formula-bars { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
 .formula-bars span { display: block; height: 3.5px; border-radius: 1.5px; }
 
@@ -145,19 +152,17 @@ button { font: inherit; }
   box-shadow: 0 1px 3px rgba(0,0,0,0.14);
   display: grid; place-items: center;
   padding: 0;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
 }
-.layer-btn.on { outline: 1.5px solid #8b55d5; outline-offset: 0; }
+.layer-btn.on {
+  outline: 1.5px solid #8b55d5;
+  outline-offset: 0;
+}
 .layer-glyph {
-  width: 28px; height: 28px;
-  display: flex; flex-direction: column-reverse; gap: 2px; align-items: center; justify-content: flex-start;
-  transform: rotateX(18deg) rotateY(-28deg);
-  transform-style: preserve-3d;
-}
-.lg-row { display: flex; gap: 2px; }
-.lg-row span {
-  width: 7px; height: 7px; border-radius: 1.5px;
-  background: linear-gradient(135deg, #fff200, #00e632 40%, #ff7f00 70%, #c01a16);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+  width: 36px; height: 36px;
+  display: block;
+  pointer-events: none;
 }
 
 .advance-block {
@@ -193,7 +198,7 @@ button { font: inherit; }
   mask-composite: exclude;
 }
 .advance-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.advance-btn svg { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.28)); margin-left: 2px; }
+.advance-btn svg { filter: drop-shadow(0 1px 1px rgba(0,0,0,0.28)); margin-left: 3px; }
 
 .formula-strip-slot {
   height: 56px; width: 100%;
@@ -227,6 +232,8 @@ button { font: inherit; }
   border-radius: 14px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
+.util-speed { font-weight: 800; }
+.util-reset { font-weight: 600; }
 
 .move-pad {
   display: grid;
@@ -236,6 +243,7 @@ button { font: inherit; }
 .pad-btn {
   height: 44px; border: 0; cursor: pointer;
   font-size: 18px; font-weight: 600; color: var(--ink);
+  font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
   background: var(--plate);
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
@@ -447,6 +455,10 @@ button { font: inherit; }
 .formula-row-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .formula-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 
+@media (max-width: 430px) {
+  .lesson-col { gap: 6px; padding: 6px 10px 4px; }
+  .formula-strip-slot { height: 48px; }
+}
 @media (min-width: 900px) {
-  .lesson-col { max-width: 480px; }
+  .lesson-col { max-width: 430px; }
 }
