@@ -19,4 +19,4 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
-Sitemap: https://toniopeng.github.io/cubeeasy-web/sitemap.xml
+Sitemap: https://cubeeasy.app/sitemap.xml
