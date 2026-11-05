@@ -1,0 +1,36 @@
+name: pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build with public Paddle client config
+        env:
+          VITE_BASE: /
+          VITE_SITE_ORIGIN: https://cubeeasy.app
+          VITE_PADDLE_CLIENT_TOKEN: ${{ secrets.VITE_PADDLE_CLIENT_TOKEN }}
+          VITE_PADDLE_PRICE_ID: ${{ secrets.VITE_PADDLE_PRICE_ID }}
+          VITE_PADDLE_ENV: ${{ secrets.VITE_PADDLE_ENV }}
+        run: bash scripts/build-pages.sh
+      - name: Publish gh-pages
+        run: |
+          set -eu
+          git fetch origin gh-pages
+          git worktree add --detach /tmp/ghpages origin/gh-pages
+          find /tmp/ghpages -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a dist/. /tmp/ghpages/
+          git -C /tmp/ghpages add -A
+          git -C /tmp/ghpages -c user.name='github-actions' -c user.email='actions@users.noreply.github.com' commit -m "Deploy cubeeasy.app"
+          git -C /tmp/ghpages push origin HEAD:gh-pages

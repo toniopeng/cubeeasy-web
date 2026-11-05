@@ -4,7 +4,7 @@ import { Paywall } from '../components/Paywall'
 import { FormulasSheet } from '../components/FormulasSheet'
 import { COLORS, type Face, type Move, moveNotation, parseMoves } from '../cube/model'
 import { CubeViewport } from '../cube/viewport'
-import { LessonCoach, type CoachSnapshot, type MiddleSlide } from '../lesson/coach'
+import { LessonCoach, type Cheer, type CoachSnapshot, type MiddleSlide } from '../lesson/coach'
 import {
   FormulaIcon,
   LayerGlyph,
@@ -22,6 +22,10 @@ import {
   type EntitlementState,
 } from '../lib/entitlement'
 import { LIFETIME_PRICE_LABEL } from '../data/course'
+import { paddleConfigured } from '../lib/paddle'
+import { GuideArticle } from '../seo/GuideArticle'
+import { HOME_DESCRIPTION, HOME_TITLE } from '../seo/content'
+import { usePageMeta } from '../seo/usePageMeta'
 
 const MOVE_TOKENS = ["U", "U'", "R", "R'", "L", "L'", "F", "F'", "D", "D'"] as const
 
@@ -30,6 +34,54 @@ function chipBg(face: Face) {
 }
 function chipInk(face: Face) {
   return face === 'L' || face === 'B' ? '#fff' : COLORS.ink
+}
+
+const CHEER_COLORS = [COLORS.U, COLORS.D, COLORS.F, COLORS.R, COLORS.L, COLORS.B]
+
+function CheerBurst({ kind, id }: { kind: Exclude<Cheer, 'none'>; id: number }) {
+  const count = kind === 'solved' ? 70 : kind === 'step' ? 46 : 30
+  const pieces = Array.from({ length: count }, (_, i) => {
+    const left = (i * 47 + id * 13) % 100
+    const delay = ((i * 17) % 28) / 100
+    const dur = (kind === 'solved' ? 1.7 : kind === 'step' ? 1.45 : 1.2) + ((i * 13) % 12) / 25
+    const rot = ((i * 53) % 360) - 180
+    const drift = ((i * 17 + id) % 21) - 10
+    const size = (kind === 'piece' ? 7 : 8) + (i % 5)
+    return {
+      left,
+      delay,
+      dur,
+      rot,
+      drift: drift * (kind === 'solved' ? 14 : 10),
+      color: CHEER_COLORS[i % CHEER_COLORS.length],
+      round: i % 3 === 0,
+      size,
+    }
+  })
+  return (
+    <div className={`cheer cheer-${kind}`} aria-hidden>
+      <span className="popper popper-l">🎉</span>
+      <span className="popper popper-r">🎉</span>
+      {kind !== 'piece' && <span className="popper popper-c">🎉</span>}
+      {pieces.map((p, i) => (
+        <span
+          key={`${id}-${i}`}
+          className="confetti"
+          style={{
+            left: `${p.left}%`,
+            background: p.color,
+            width: p.size,
+            height: p.round ? p.size : Math.round(p.size * 1.7),
+            borderRadius: p.round ? 999 : 2,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.dur}s`,
+            ['--drift' as string]: `${p.drift}px`,
+            ['--rot' as string]: `${p.rot}deg`,
+          }}
+        />
+      ))}
+    </div>
+  )
 }
 
 const IDLE: CoachSnapshot = {
@@ -47,6 +99,7 @@ const IDLE: CoachSnapshot = {
   practiceOrbit: true,
   inputLocked: false,
   caption: '',
+  algActing: false,
   celebrating: false,
   cheer: 'none',
   cheerID: 0,
@@ -60,7 +113,8 @@ const IDLE: CoachSnapshot = {
  * One-page LessonScreen — wired to LessonCoach (iOS teaching-v51 port).
  */
 export function Learn() {
-  const [params] = useSearchParams()
+  usePageMeta('/', HOME_TITLE, HOME_DESCRIPTION)
+  const [params, setParams] = useSearchParams()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const vpRef = useRef<CubeViewport | null>(null)
   const coachRef = useRef<LessonCoach | null>(null)
@@ -94,10 +148,17 @@ export function Learn() {
     }
   }, [])
 
+  const sandbox = params.get('sandbox') === '1'
+  // A real Paddle build must not offer a free unlock, even with ?sandbox=1.
+  const allowSimulate = sandbox && !paddleConfigured()
+
   useEffect(() => {
-    if (params.get('unlocked') === '1' && !ent.isLifetime) {
-      setEnt(unlockLifetime(ent))
-    }
+    // Old success links used ?unlocked=1 as a grant. Visiting that URL does not
+    // unlock. Lifetime is written only from checkout.completed.
+    if (params.get('unlocked') !== '1') return
+    const next = new URLSearchParams(params)
+    next.delete('unlocked')
+    setParams(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -161,7 +222,7 @@ export function Learn() {
   const playDisabled = snap.inputLocked || (snap.step > 0 && !snap.playWillAct)
 
   function layerSelected(layers: number) {
-    if (layers === 1) return snap.step === 2
+    if (layers === 1) return snap.step === 1 || snap.step === 2
     if (layers === 2) return snap.step === 3
     return snap.step >= 4 && snap.step <= 7
   }
@@ -173,8 +234,14 @@ export function Learn() {
       <div className="studio-bg" aria-hidden />
       <div className="lesson-col">
         <div className="viewport-wrap">
-          <canvas ref={canvasRef} className="cube-canvas" />
-          {snap.cheer !== 'none' && <div className={`cheer cheer-${snap.cheer}`} aria-hidden />}
+          <canvas
+            ref={canvasRef}
+            className="cube-canvas"
+            aria-label="Coached 3×3 cube. Drag to orbit after Reset."
+          />
+          {snap.cheer !== 'none' && (
+            <CheerBurst key={snap.cheerID} kind={snap.cheer} id={snap.cheerID} />
+          )}
           {minimapStep > 0 && (
             <div className="overlay-tl">
               <StepPreviewMini step={minimapStep} side={92} />
@@ -195,7 +262,7 @@ export function Learn() {
           <div className="overlay-br">
             <button
               className={`layer-btn ${layerSelected(1) ? 'on' : ''}`}
-              onClick={() => begin(2)}
+              onClick={() => begin(1)}
               aria-label="Bottom layer"
             >
               <LayerGlyph layers={1} />
@@ -216,12 +283,15 @@ export function Learn() {
             </button>
           </div>
           <div className="overlay-tr">
-            <div className={`brand-capsule ${titleIn ? 'in' : ''}`}>CubeEasy</div>
+            <h1 className={`brand-capsule ${titleIn ? 'in' : ''}`}>
+              CubeEasy
+              <span className="visually-hidden">, beginner tutor to learn to solve a 3×3 cube</span>
+            </h1>
             <button className="formulas-btn" onClick={() => setShowFormulas(true)} aria-label="Formulas">
               <FormulaIcon />
             </button>
           </div>
-          {snap.caption ? <div className="caption-pill">{snap.caption}</div> : null}
+          {snap.step === 0 && snap.caption ? <div className="caption-pill">{snap.caption}</div> : null}
         </div>
 
         <div className="advance-block">
@@ -296,10 +366,15 @@ export function Learn() {
         >
           {ent.isLifetime ? 'Unlocked' : `Lifetime · ${LIFETIME_PRICE_LABEL}`}
         </button>
+        <details className="lesson-about">
+          <summary>About this tutor</summary>
+          <GuideArticle level="embed" />
+        </details>
       </div>
 
       <Paywall
         open={showPaywall}
+        allowSimulate={allowSimulate}
         onClose={() => {
           setShowPaywall(false)
           if (ent.isLifetime && pendingStep != null) {
@@ -308,7 +383,7 @@ export function Learn() {
             coachRef.current?.start(s)
           }
         }}
-        onUnlockDemo={() => {
+        onUnlocked={() => {
           const next = unlockLifetime(ent)
           setEnt(next)
           setShowPaywall(false)
