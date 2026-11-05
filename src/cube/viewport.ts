@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { cuePose } from './cuePose'
 import {
   COLORS,
   FACE_NORMAL,
@@ -437,6 +438,30 @@ export class CubeViewport {
   async settleMainAngle() {
     if (this.preserveView) return
     this.resetCamera()
+  }
+
+  /**
+   * One continuous spin into the face-on middle-layer pose.
+   * The lesson quarter-turn and the cue orbit used to be separate, so the
+   * orbit popped in after the yaw had already eased to a stop. Distance and
+   * field of view are left alone.
+   */
+  async spinToCuePose(yaw: number, localPoints: Vec3[]) {
+    const pose = cuePose(yaw, this.model.flipped, localPoints)
+    const start = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
+    this.orbitRig.quaternion.identity()
+    this.cubeRoot.quaternion.copy(start)
+    const my = this.token.n
+    const turn = start.angleTo(pose.visual)
+    if (turn > 0.012) {
+      const quarters = turn / (Math.PI / 2)
+      await this.slerpTo(pose.visual, this.teachMs(Math.max(0.5, 0.78 * quarters)), my)
+      if (this.token.n !== my) return
+    }
+    this.model.yaw = pose.dest
+    this.cubeYawQuarters = pose.dest
+    this.cubeRoot.quaternion.copy(pose.yawQuat)
+    this.orbitRig.quaternion.copy(pose.orbitQuat)
   }
 
   /**
@@ -1171,16 +1196,8 @@ export class CubeViewport {
    * pieces face the camera. Distance and FOV stay at the current teaching frame.
    */
   frameCues(localPoints: Vec3[]) {
-    const yawQ = this.cubeRoot.quaternion
-    const worlds = localPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z).applyQuaternion(yawQ))
-    const centroid = new THREE.Vector3()
-    for (const w of worlds) centroid.add(w)
-    if (worlds.length) centroid.multiplyScalar(1 / worlds.length)
-    const cam = new THREE.Vector3(REST.x, 0, REST.z)
-    let angle = Math.atan2(cam.x, cam.z) - Math.atan2(centroid.x, centroid.z)
-    while (angle > Math.PI) angle -= Math.PI * 2
-    while (angle < -Math.PI) angle += Math.PI * 2
-    this.orbitRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+    const pose = cuePose(this.model.yaw, this.model.flipped, localPoints)
+    this.orbitRig.quaternion.copy(pose.orbitQuat)
   }
 
   showRepeatMark(near: Vec3) {

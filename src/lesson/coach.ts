@@ -1319,14 +1319,11 @@ export class LessonCoach {
       ])
   }
 
-  /** Face the middle-layer match and hold that camera until the formula acts. */
+  /** Spin once, continuously, into the face-on pose. Hold it until the formula acts. */
   private async faceMiddleHighlight(token: number, yaw: number, points: Vec3[]) {
     this.scene.preserveView = false
-    await this.scene.settleMainAngle()
+    await this.scene.spinToCuePose(yaw, points)
     if (this.token !== token) return false
-    await this.scene.animateYaw(yaw, true)
-    if (this.token !== token) return false
-    this.scene.frameCues(points)
     this.scene.preserveView = true
     return true
   }
