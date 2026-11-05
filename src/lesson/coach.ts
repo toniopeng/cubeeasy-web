@@ -23,7 +23,6 @@ import {
   bestMatchCount,
   bestUCount,
   cloneState,
-  colorName,
   cornerPlaced,
   cornerPrep,
   cornerSolved,
@@ -802,7 +801,6 @@ export class LessonCoach {
     const revealed = new Set<Face>()
     for (const drop of drops) {
       if (token !== this.token) return
-      this.caption = colorName(drop.side)
       revealed.add(drop.side)
       this.showDaisyWhites([...revealed])
       this.emit()
@@ -834,7 +832,6 @@ export class LessonCoach {
     token: number,
   ) {
     if (token !== this.token) return false
-    this.caption = colorName(drop.side)
     this.showStep1(this.whiteEdgeHomes())
     this.emit()
     await this.scene.animateYaw(drop.yaw)
@@ -1190,18 +1187,12 @@ export class LessonCoach {
         }
         this.inputLocked = true
         this.emit()
-        // Highlight finished. For the to-the-right pattern, spin until every
-        // exclamation mark and solving piece is on the camera side.
+        // Highlight finished. Right-hand inserts turn to face the camera.
+        // The arrow always runs from the up-edge center to the left-edge center.
         if (aligned.right) {
           if (!(await this.presentMiddleRight(token, from, top, aligned.side, aligned.roof))) return
         } else if (
-          !(await this.presentMiddleArrow(
-            token,
-            aligned.yaw,
-            from,
-            top,
-            FACE_NORMAL[aligned.side],
-          ))
+          !(await this.presentMiddleArrow(token, aligned.yaw, from, top))
         )
           return
         this.showStep3(top)
@@ -1325,30 +1316,50 @@ export class LessonCoach {
     await this.scene.animateYaw(yaw)
     if (this.token !== token) return false
     this.scene.hideRepeatMark()
-    const facing = this.scene.localCameraDir()
-    this.scene.narrowArrow(piece, slot, facing)
     this.scene.frameCues(cues)
     this.scene.preserveView = true
-    return true
+    const ends = this.middleArrowEnds(piece, slot)
+    await this.scene.narrowArrow(ends.from, ends.to, this.scene.localCameraDir())
+    return this.token === token
   }
 
   /**
    * After the middle-layer highlight, yaw the insert face toward the camera
    * and draw the thin "to the right / left" arrow in that view.
    */
-  private async presentMiddleArrow(
-    token: number,
-    yaw: number,
-    from: Vec3,
-    to: Vec3,
-    facing: Vec3,
-  ) {
+  private async presentMiddleArrow(token: number, yaw: number, from: Vec3, to: Vec3) {
     await this.scene.settleMainAngle()
     if (this.token !== token) return false
     await this.scene.animateYaw(yaw)
     if (this.token !== token) return false
-    this.scene.narrowArrow(from, to, facing)
+    const ends = this.middleArrowEnds(from, to)
+    await this.scene.narrowArrow(ends.from, ends.to, this.scene.localCameraDir())
     return this.token === token
+  }
+
+  /** Centers of the up-layer middle edge and the left middle edge. */
+  private middleArrowEnds(fallbackFrom: Vec3, fallbackTo: Vec3): { from: Vec3; to: Vec3 } {
+    let up: Vec3 | null = null
+    const lefts: Vec3[] = []
+    for (const home of MID_HOMES) {
+      const piece = pieceHome(this.model, home)
+      if (!piece) continue
+      if (piece.pos.y === 1) up = { x: piece.pos.x, y: piece.pos.y, z: piece.pos.z }
+      if (piece.pos.y === 0 && piece.pos.x === -1) {
+        lefts.push({ x: piece.pos.x, y: piece.pos.y, z: piece.pos.z })
+      }
+    }
+    const from = up ?? fallbackFrom
+    let to = lefts[0] ?? fallbackTo
+    let best = Infinity
+    for (const left of lefts) {
+      const d = (left.x - from.x) ** 2 + (left.y - from.y) ** 2 + (left.z - from.z) ** 2
+      if (d < best) {
+        best = d
+        to = left
+      }
+    }
+    return { from, to }
   }
 
   private yawShowingCue(from: Vec3, _to: Vec3, _faces: Face[]): number {
@@ -1880,8 +1891,6 @@ export class LessonCoach {
           }
           break
         }
-        this.caption = 'Bottom looks messy'
-        this.emit()
       }
       const more = twistedSlots(this.model)
       this.showFullCube()

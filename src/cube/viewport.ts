@@ -1063,10 +1063,10 @@ export class CubeViewport {
   }
 
   /**
-   * Thin insert arrow bowed toward `facing` (the face squared to the camera)
-   * so the shaft and head read face-on, not edge-on.
+   * Purple middle-layer arrow from the up-edge center to the left-edge center.
+   * Draws along that path. Thicker than the old hairline, still a narrow cue.
    */
-  narrowArrow(from: Vec3, to: Vec3, facing: Vec3) {
+  async narrowArrow(from: Vec3, to: Vec3, facing: Vec3) {
     this.hideGuideArrow()
     const g = new THREE.Group()
     const mat = new THREE.MeshBasicMaterial({
@@ -1077,36 +1077,24 @@ export class CubeViewport {
     const face = new THREE.Vector3(facing.x, facing.y, facing.z)
     if (face.lengthSq() < 1e-6) face.set(0, 0, 1)
     face.normalize()
-    const lift = (p: THREE.Vector3) => {
-      const radial = p.clone()
-      if (radial.lengthSq() < 1e-4) radial.copy(face)
-      else radial.normalize()
-      return p.clone().add(radial.multiplyScalar(0.38)).add(face.clone().multiplyScalar(0.22))
-    }
-    const start = lift(new THREE.Vector3(from.x, from.y, from.z))
-    let end = lift(new THREE.Vector3(to.x, to.y, to.z))
-    if (start.distanceTo(end) < 0.35) {
-      const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), face)
-      if (side.lengthSq() < 1e-6) side.set(1, 0, 0)
-      end = start.clone().add(side.normalize().multiplyScalar(1.15))
-    }
-    const mid = start.clone().add(end).multiplyScalar(0.5)
-    mid.add(face.clone().multiplyScalar(0.85))
+    const start = new THREE.Vector3(from.x, from.y, from.z).add(face.clone().multiplyScalar(0.5))
+    const end = new THREE.Vector3(to.x, to.y, to.z).add(face.clone().multiplyScalar(0.5))
+    const mid = start.clone().add(end).multiplyScalar(0.5).add(face.clone().multiplyScalar(0.28))
     const curve = new THREE.QuadraticBezierCurve3(start, mid, end)
-    const pts = curve.getPoints(18)
+    const pts = curve.getPoints(20)
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]
       const b = pts[i + 1]
       const dir = b.clone().sub(a)
       const len = dir.length()
       if (len < 0.01) continue
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, len, 6), mat)
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, len, 8), mat)
       cyl.position.copy(a).add(b).multiplyScalar(0.5)
       cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize())
       cyl.renderOrder = 8
       g.add(cyl)
     }
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.18, 8), mat)
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 10), mat)
     cone.position.copy(end)
     const tipDir = end.clone().sub(pts[pts.length - 2] ?? mid).normalize()
     cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tipDir)
@@ -1114,12 +1102,24 @@ export class CubeViewport {
     g.add(cone)
     this.cubeRoot.add(g)
     this.arrowNode = g
+    const my = this.token.n
+    for (const n of g.children) {
+      n.visible = false
+      n.scale.setScalar(0.4)
+    }
+    for (const n of g.children) {
+      if (this.token.n !== my) return
+      n.visible = true
+      n.scale.setScalar(1)
+      await sleep(22, this.token, my)
+    }
   }
 
   /** Cube-local direction from the origin toward the teaching camera. */
   localCameraDir(): Vec3 {
     const cam = REST.clone().normalize()
-    cam.applyQuaternion(this.cubeRoot.quaternion.clone().invert())
+    const q = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
+    cam.applyQuaternion(q.invert())
     return { x: cam.x, y: cam.y, z: cam.z }
   }
 
