@@ -52,6 +52,7 @@ import {
   whiteDir,
   bestVisibleYaw,
   yawFor,
+  yawFront,
   yawRight,
   yellowAlignMoves,
   yellowDir,
@@ -1146,20 +1147,30 @@ export class LessonCoach {
         this.showStep3(top)
         const placedAt = pieceHome(this.model, top)?.pos ?? top
         const solvedMid = MID_HOMES.filter((h) => midSolved(this.model, h)).length
-        let cueYaw: number
-        if (solvedMid >= 2) {
-          cueYaw = this.yawShowingCue(placedAt, top, [aligned.side, aligned.roof])
-        } else {
-          cueYaw = yawRight(v3(placedAt.x, 0, placedAt.z))
-        }
-        if (this.model.yaw !== cueYaw) {
-          await this.scene.settleMainAngle()
-          await this.scene.animateYaw(cueYaw)
-          if (token !== this.token) return
+        const latePiece = solvedMid >= 2
+        const blueFace: Face | null = aligned.side === 'B' || aligned.roof === 'B' ? 'B' : null
+        // 3rd/4th piece: the blue match is often on the back. Yaw there only for the
+        // non-blue half of the highlight; the blue half is shown face-on below.
+        if (!(latePiece && aligned.side === 'B')) {
+          let cueYaw: number
+          if (latePiece) {
+            cueYaw = this.yawShowingCue(placedAt, top, [aligned.side, aligned.roof])
+          } else {
+            cueYaw = yawRight(v3(placedAt.x, 0, placedAt.z))
+          }
+          if (this.model.yaw !== cueYaw) {
+            await this.scene.settleMainAngle()
+            await this.scene.animateYaw(cueYaw)
+            if (token !== this.token) return
+          }
         }
         this.showStep3(top)
         this.middleSlide = aligned.right ? 'right' : 'left'
         this.emit()
+        if (latePiece && blueFace && aligned.side === 'B') {
+          if (!(await this.faceBlueMatch(token))) return
+          this.showStep3(top)
+        }
         await this.scene.pulseStickers(
           [
             { home: top, face: aligned.side },
@@ -1168,6 +1179,10 @@ export class LessonCoach {
           3,
         )
         if (token !== this.token) return
+        if (latePiece && blueFace && aligned.roof === 'B') {
+          if (!(await this.faceBlueMatch(token))) return
+          this.showStep3(top)
+        }
         await this.scene.pulseStickers(
           [
             { home: top, face: aligned.roof },
@@ -1176,6 +1191,11 @@ export class LessonCoach {
           3,
         )
         if (token !== this.token) return
+        if (latePiece && blueFace) {
+          if (!(await this.hold(0.85, token))) return
+          if (!(await this.returnMainTeaching(token))) return
+          this.showStep3(top)
+        }
         const alg = aligned.right ? [...ALGS.middleRight] : [...ALGS.middleLeft]
         this.cancelWordLabels()
         const from = pieceHome(this.model, top)?.pos ?? top
@@ -1187,14 +1207,14 @@ export class LessonCoach {
         }
         this.inputLocked = true
         this.emit()
-        // Highlight finished. Right-hand inserts turn to face the camera.
-        // The arrow always runs from the up-edge center to the left-edge center.
-        if (aligned.right) {
+        if (latePiece && blueFace) {
+          // Already back on the main camera. Draw the arrow there — do not orbit away again.
+          const ends = this.middleArrowEnds(from, top)
+          await this.scene.narrowArrow(ends.from, ends.to, this.scene.localCameraDir())
+          if (token !== this.token) return
+        } else if (aligned.right) {
           if (!(await this.presentMiddleRight(token, from, top, aligned.side, aligned.roof))) return
-        } else if (
-          !(await this.presentMiddleArrow(token, aligned.yaw, from, top))
-        )
-          return
+        } else if (!(await this.presentMiddleArrow(token, aligned.yaw, from, top))) return
         this.showStep3(top)
         if (
           !(await this.playUntil(
@@ -1360,6 +1380,27 @@ export class LessonCoach {
       }
     }
     return { from, to }
+  }
+
+  /** Turn the blue center toward the teaching camera so the color match is in view. */
+  private async faceBlueMatch(token: number) {
+    this.scene.preserveView = false
+    await this.scene.settleMainAngle()
+    if (this.token !== token) return false
+    await this.scene.animateYaw(yawFront(FACE_NORMAL.B), true)
+    return this.token === token
+  }
+
+  /** Back to the main lesson camera (rest eye, yaw 0). */
+  private async returnMainTeaching(token: number) {
+    this.scene.preserveView = false
+    await this.scene.settleMainAngle()
+    if (this.token !== token) return false
+    if (this.model.yaw !== 0) {
+      await this.scene.animateYaw(0, true)
+      if (this.token !== token) return false
+    }
+    return true
   }
 
   private yawShowingCue(from: Vec3, _to: Vec3, _faces: Face[]): number {

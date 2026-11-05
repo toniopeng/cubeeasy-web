@@ -461,18 +461,19 @@ export class CubeViewport {
     // Quaternion tumble: no pitch clamp, so a drag can spin the cube through
     // a full 360°. Two fingers keep the earlier free-yaw (spin around Y only).
     const applyOrbit = (dx: number, dy: number, yawOnly: boolean) => {
-      // Screen axes from the camera as it is now, not world Y / the scramble's
-      // original up. Left-right tumbles around the current screen-up; up-down
-      // tumbles around the current screen-right.
+      // Re-read the camera basis every frame. These are the on-screen axes
+      // (camera local Y = up, local X = right), not the cube's local axes.
+      // Finger up (dy < 0) moves the facing point toward the top of the screen.
+      // Finger right (dx > 0) moves it toward the right edge.
       const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion).normalize()
-      const yawQ = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * 0.01)
-      let delta = yawQ
-      if (!yawOnly) {
-        const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion).normalize()
-        const pitchQ = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * 0.01)
-        delta = pitchQ.multiply(yawQ)
+      const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion).normalize()
+      if (dx !== 0) {
+        const yawQ = new THREE.Quaternion().setFromAxisAngle(screenUp, dx * 0.01)
+        this.orbitRig.quaternion.premultiply(yawQ)
       }
-      this.orbitRig.quaternion.premultiply(delta)
+      if (yawOnly || dy === 0) return
+      const pitchQ = new THREE.Quaternion().setFromAxisAngle(screenRight, dy * 0.01)
+      this.orbitRig.quaternion.premultiply(pitchQ)
     }
     el.addEventListener('pointerdown', (e) => {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
