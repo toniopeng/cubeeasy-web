@@ -41,6 +41,12 @@
 <p><a href="https://cubeeasy.app/">Open the tutor</a> · <a href="https://cubeeasy.app/pricing/">Pricing</a> · <a href="https://cubeeasy.app/support/">Support</a></p>
 </article>
     </noscript>
+    <script>
+      if (location.hostname.endsWith('github.io')) {
+        var path = location.pathname.replace(/^\/cubeeasy-web/, '') || '/'
+        location.replace('https://cubeeasy.app' + path + location.search + location.hash)
+      }
+    </script>
     <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "ce2851f4b2fb4def81b5e7b709608c8e"}'></script><!-- End Cloudflare Web Analytics -->
   </body>
 </html>
