@@ -323,6 +323,20 @@ export class CubeViewport {
     /* twist step clears lock — restore handled by coach */
   }
 
+  /** Lit stickers keep their hue. Gray lock is a flat gray with the color emissive off. */
+  private applyStickerLook(mat: THREE.MeshPhysicalMaterial, face: Face, gray: boolean) {
+    if (gray) {
+      mat.color.set(COLORS.grayed)
+      mat.emissive.set(0x000000)
+      mat.emissiveIntensity = 0
+      return
+    }
+    const color = faceColor(face, false)
+    mat.color.copy(color)
+    mat.emissive.copy(color)
+    mat.emissiveIntensity = 0.18
+  }
+
   private syncColors() {
     for (const c of this.cubies) {
       const home = c.userData.home
@@ -337,7 +351,7 @@ export class CubeViewport {
           // Exact keep set only (coach passes GUIDE_CENTERS explicitly) — iOS grayExcept.
           lit = this.watchHomes.has(hk)
         }
-        mat.color = faceColor(face, !lit)
+        this.applyStickerLook(mat, face, !lit)
       }
     }
   }
@@ -447,15 +461,18 @@ export class CubeViewport {
     // Quaternion tumble: no pitch clamp, so a drag can spin the cube through
     // a full 360°. Two fingers keep the earlier free-yaw (spin around Y only).
     const applyOrbit = (dx: number, dy: number, yawOnly: boolean) => {
-      // Match the old camera orbit: drag right brings the right face forward,
-      // drag down tips the bottom toward the camera. No pitch clamp, so either
-      // gesture can continue through a full 360°.
-      const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * 0.01)
-      this.orbitRig.quaternion.premultiply(yawQ)
-      if (yawOnly) return
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)
-      const pitchQ = new THREE.Quaternion().setFromAxisAngle(right, -dy * 0.01)
-      this.orbitRig.quaternion.premultiply(pitchQ)
+      // Screen axes from the camera as it is now, not world Y / the scramble's
+      // original up. Left-right tumbles around the current screen-up; up-down
+      // tumbles around the current screen-right.
+      const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion).normalize()
+      const yawQ = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * 0.01)
+      let delta = yawQ
+      if (!yawOnly) {
+        const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion).normalize()
+        const pitchQ = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * 0.01)
+        delta = pitchQ.multiply(yawQ)
+      }
+      this.orbitRig.quaternion.premultiply(delta)
     }
     el.addEventListener('pointerdown', (e) => {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -962,7 +979,7 @@ export class CubeViewport {
       const mesh = cubie?.userData.stickers.get(s.face)
       if (!mesh) continue
       const mat = mesh.material as THREE.MeshPhysicalMaterial
-      mat.color = faceColor(s.face, gray)
+      this.applyStickerLook(mat, s.face, gray)
     }
   }
 

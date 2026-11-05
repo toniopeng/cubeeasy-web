@@ -283,7 +283,10 @@ export function Learn() {
               <FormulaIcon />
             </button>
           </div>
-          {snap.caption && snap.playFace.kind !== 'formula' && !snap.algActing ? (
+          {snap.caption &&
+          snap.caption.trim().toLowerCase() !== 'next' &&
+          snap.playFace.kind !== 'formula' &&
+          !snap.algActing ? (
             <div className="caption-pill">{snap.caption}</div>
           ) : null}
         </div>

@@ -979,7 +979,7 @@ export class LessonCoach {
       const more = CORNER_HOMES.some((h) => !cornerSolved(this.model, h))
       if (more) {
         this.celebrate('piece')
-        this.caption = 'Next'
+        this.caption = ''
         this.emit()
         if (!(await this.confirm(token))) return
       }
@@ -1223,7 +1223,7 @@ export class LessonCoach {
         const more = MID_HOMES.some((h) => !midSolved(this.model, h))
         if (more) {
           this.celebrate('piece')
-          this.caption = 'Next'
+          this.caption = ''
           const next = MID_HOMES.find((h) => !midSolved(this.model, h))
           if (next) this.showStep3(next)
           this.emit()
@@ -1834,7 +1834,7 @@ export class LessonCoach {
       if (!twisted(this.model, ufrSlot(this.model))) {
         const turns = uMovesUntilTwistedAtUFR(this.model)
         if (turns.length) {
-          this.caption = 'Next'
+          this.caption = ''
           this.showFullCube()
           await this.scene.settleMainAngle()
           this.showFullCube()
