@@ -68,6 +68,9 @@ button { font: inherit; }
 }
 .page h2, .page h3, .page h4 { line-height: 1.25; }
 .page h1 { font-size: 1.6rem; margin: 0 0 0.5rem; }
+.legal h2 { font-size: 1.12rem; margin: 1.35rem 0 0.35rem; }
+.legal p { margin: 0.45rem 0; }
+.legal code { font-size: 0.92em; }
 .muted { color: #5e636b; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center;

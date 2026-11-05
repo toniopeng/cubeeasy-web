@@ -57,7 +57,12 @@ export function Paywall({ open, onClose, onUnlockDemo, allowSimulate = false }: 
             Simulate purchase (sandbox)
           </button>
         )}
-        <button className="paywall-restore" onClick={() => setNote('Restore is available after Paddle is connected.')}>
+        <button
+          className="paywall-restore"
+          onClick={() =>
+            setNote('To restore Lifetime on this browser, email taopeng46@gmail.com with your Paddle receipt.')
+          }
+        >
           Restore Purchases
         </button>
         <button className="paywall-notnow" onClick={onClose}>

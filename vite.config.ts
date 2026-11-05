@@ -78,7 +78,7 @@ function seoFiles(): Plugin {
       copyFileSync(home, resolve(out, '404.html'))
       // Real files so GitHub Pages returns 200 for these paths, not a soft 404.
       const homeHtml = readFileSync(home, 'utf8')
-      for (const path of ['/guide', '/pricing', '/support', '/privacy', '/terms']) {
+      for (const path of ['/guide', '/pricing', '/support', '/privacy', '/terms', '/copyright']) {
         const dir = resolve(out, path.slice(1))
         mkdirSync(dir, { recursive: true })
         writeFileSync(resolve(dir, 'index.html'), pageVariant(homeHtml, root, path))

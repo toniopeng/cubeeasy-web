@@ -94,6 +94,8 @@ export function pageTitle(path: string): string {
       return 'Privacy — CubeEasy'
     case '/terms':
       return 'Terms — CubeEasy'
+    case '/copyright':
+      return 'Copyright — CubeEasy'
     default:
       return HOME_TITLE
   }
@@ -106,11 +108,13 @@ export function pageDescription(path: string): string {
     case '/pricing':
       return `CubeEasy Lifetime is ${LIFETIME_PRICE_LABEL} once on the web after ${FREE_RUNS} free course runs. No subscription. The 7-step beginner tutor stays unlocked.`
     case '/support':
-      return 'Help for CubeEasy, the beginner 3×3 tutor. Free runs live in this browser. Lifetime checkout is a one-time web purchase.'
+      return 'Help for CubeEasy on the web. Email taopeng46@gmail.com. Two free runs stay in this browser. Lifetime is a one-time purchase sold by Paddle.'
     case '/privacy':
-      return 'CubeEasy stores free-run progress in your browser. Lifetime purchases are processed by Paddle. No account is required for free runs.'
+      return 'CubeEasy stores free-run progress in this browser only. Cloudflare Web Analytics does not use cookies. Lifetime checkout is sold by Paddle as Merchant of Record.'
     case '/terms':
-      return 'Terms for CubeEasy, an independent educational tutor for learning to solve a 3×3 cube. Free runs are limited. Lifetime is a one-time purchase.'
+      return 'Terms for CubeEasy, an independent 3×3 tutor by PENG TAO. Two free runs, then Lifetime for US $9.99 once via Paddle. Not affiliated with Rubik’s Brand Ltd.'
+    case '/copyright':
+      return '© 2026 PENG TAO. Copyright in the CubeEasy website, software, and lesson text. Classic-cube trademarks belong to their owners.'
     default:
       return HOME_DESCRIPTION
   }
@@ -268,6 +272,7 @@ export function sitemapXml(root: string, lastmod: string): string {
     { path: '/support', priority: '0.4' },
     { path: '/privacy', priority: '0.2' },
     { path: '/terms', priority: '0.2' },
+    { path: '/copyright', priority: '0.2' },
   ]
   const urls = pages
     .map(({ path, priority }) => {
