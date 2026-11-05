@@ -11,5 +11,5 @@ export function absoluteUrl(path: string): string {
   const root = siteRoot()
   if (path === '/' || path === '') return root
   const suffix = path.startsWith('/') ? path.slice(1) : path
-  return `${root}${suffix}`
+  return `${root}${suffix}/`
 }

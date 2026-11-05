@@ -15,7 +15,7 @@ import {
 import { DEFAULT_SITE_ORIGIN, joinSiteRoot } from './src/seo/site.ts'
 
 function pageVariant(homeHtml: string, root: string, path: string): string {
-  const url = `${root}${path.slice(1)}`
+  const url = `${root}${path.slice(1)}/`
   const title = pageTitle(path)
   const desc = pageDescription(path)
   return homeHtml

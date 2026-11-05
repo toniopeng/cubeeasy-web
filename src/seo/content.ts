@@ -117,7 +117,7 @@ export function pageDescription(path: string): string {
 }
 
 export function buildJsonLd(root: string) {
-  const url = (path: string) => (path === '/' ? root : `${root}${path.slice(1)}`)
+  const url = (path: string) => (path === '/' ? root : `${root}${path.slice(1)}/`)
   return {
     '@context': 'https://schema.org',
     '@graph': [
@@ -212,7 +212,7 @@ function esc(text: string): string {
 
 /** Static HTML for browsers and crawlers that do not run JavaScript. */
 export function renderGuideHtml(root: string): string {
-  const href = (path: string) => (path === '/' ? root : `${root}${path.slice(1)}`)
+  const href = (path: string) => (path === '/' ? root : `${root}${path.slice(1)}/`)
   const steps = STEPS.map(
     (step, i) => `<li><strong>Step ${i + 1}: ${esc(step.name)}.</strong> ${esc(step.text)}</li>`,
   ).join('')
@@ -271,7 +271,7 @@ export function sitemapXml(root: string, lastmod: string): string {
   ]
   const urls = pages
     .map(({ path, priority }) => {
-      const loc = path === '/' ? root : `${root}${path.slice(1)}`
+      const loc = path === '/' ? root : `${root}${path.slice(1)}/`
       return `  <url><loc>${loc}</loc><lastmod>${lastmod}</lastmod><priority>${priority}</priority></url>`
     })
     .join('\n')
