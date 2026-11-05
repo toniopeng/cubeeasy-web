@@ -1168,7 +1168,7 @@ export class CubeViewport {
 
   /**
    * Spin the cube (not the teaching yaw) so the narrow arrow and the solving
-   * pieces face the camera, and step back so the arrow is not clipped.
+   * pieces face the camera. Distance and FOV stay at the current teaching frame.
    */
   frameCues(localPoints: Vec3[]) {
     const yawQ = this.cubeRoot.quaternion
@@ -1181,9 +1181,6 @@ export class CubeViewport {
     while (angle > Math.PI) angle -= Math.PI * 2
     while (angle < -Math.PI) angle += Math.PI * 2
     this.orbitRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle)
-    // Temporary cue zoom only. Lesson start recomputes the teaching distance.
-    this.distance *= 1.08
-    this.placeCamera()
   }
 
   showRepeatMark(near: Vec3) {
