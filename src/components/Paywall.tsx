@@ -5,13 +5,14 @@ import { openCheckout } from '../lib/paddle'
 type Props = {
   open: boolean
   onClose: () => void
-  onUnlockDemo: () => void
-  /** Only for ?sandbox=1. Production visitors must not get a free Lifetime button. */
+  /** Persist Lifetime after Paddle checkout.completed (or a local stub). */
+  onUnlocked: () => void
+  /** Local stub only. Hidden once a real Paddle price is configured. */
   allowSimulate?: boolean
 }
 
 /** Matches iOS PaywallView: Unlock CubeEasy, yellow Unlock, Restore, Not now. */
-export function Paywall({ open, onClose, onUnlockDemo, allowSimulate = false }: Props) {
+export function Paywall({ open, onClose, onUnlocked, allowSimulate = false }: Props) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
 
@@ -24,7 +25,7 @@ export function Paywall({ open, onClose, onUnlockDemo, allowSimulate = false }: 
       const result = await openCheckout({
         onEvent: (e) => {
           const ev = e as { name?: string }
-          if (ev?.name === 'checkout.completed') onUnlockDemo()
+          if (ev?.name === 'checkout.completed') onUnlocked()
         },
       })
       if (result.mode === 'placeholder') {
@@ -53,7 +54,7 @@ export function Paywall({ open, onClose, onUnlockDemo, allowSimulate = false }: 
           {busy ? '…' : `Unlock · ${LIFETIME_PRICE_LABEL}`}
         </button>
         {allowSimulate && (
-          <button className="paywall-restore" onClick={onUnlockDemo}>
+          <button className="paywall-restore" onClick={onUnlocked}>
             Simulate purchase (sandbox)
           </button>
         )}

@@ -114,7 +114,7 @@ const IDLE: CoachSnapshot = {
  */
 export function Learn() {
   usePageMeta('/', HOME_TITLE, HOME_DESCRIPTION)
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const vpRef = useRef<CubeViewport | null>(null)
   const coachRef = useRef<LessonCoach | null>(null)
@@ -149,14 +149,16 @@ export function Learn() {
   }, [])
 
   const sandbox = params.get('sandbox') === '1'
+  // A real Paddle build must not offer a free unlock, even with ?sandbox=1.
+  const allowSimulate = sandbox && !paddleConfigured()
 
   useEffect(() => {
-    // ?unlocked=1 is the Paddle success return, or an explicit sandbox test.
-    // A normal visit must not become Lifetime.
-    const allowReturnUnlock = sandbox || paddleConfigured()
-    if (params.get('unlocked') === '1' && allowReturnUnlock && !ent.isLifetime) {
-      setEnt(unlockLifetime(ent))
-    }
+    // Old success links used ?unlocked=1 as a grant. Visiting that URL does not
+    // unlock. Lifetime is written only from checkout.completed.
+    if (params.get('unlocked') !== '1') return
+    const next = new URLSearchParams(params)
+    next.delete('unlocked')
+    setParams(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -372,7 +374,7 @@ export function Learn() {
 
       <Paywall
         open={showPaywall}
-        allowSimulate={sandbox}
+        allowSimulate={allowSimulate}
         onClose={() => {
           setShowPaywall(false)
           if (ent.isLifetime && pendingStep != null) {
@@ -381,7 +383,7 @@ export function Learn() {
             coachRef.current?.start(s)
           }
         }}
-        onUnlockDemo={() => {
+        onUnlocked={() => {
           const next = unlockLifetime(ent)
           setEnt(next)
           setShowPaywall(false)

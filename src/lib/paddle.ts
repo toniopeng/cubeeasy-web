@@ -6,9 +6,10 @@
  *   VITE_PADDLE_PRICE_ID      — Lifetime price id (pri_…)
  *   VITE_PADDLE_ENV           — sandbox | production (default sandbox)
  *
- * Without tokens, openCheckout() returns { mode: 'placeholder' } and does not
- * unlock. A free "Simulate purchase" button is not shown unless the page
- * was opened with ?sandbox=1.
+ * Without a client token and price id, openCheckout() returns
+ * { mode: 'placeholder' } and does not unlock. Never put a Paddle API key
+ * (pdl_…) in this file or in Vite env. The client token and price id are
+ * public by design and are read from VITE_PADDLE_* at build time.
  */
 
 export type CheckoutResult =
@@ -52,8 +53,7 @@ export async function openCheckout(opts?: {
   if (!token || !priceId) {
     return {
       mode: 'placeholder',
-      reason:
-        'Set VITE_PADDLE_CLIENT_TOKEN and VITE_PADDLE_PRICE_ID, then rebuild. Sandbox tokens are fine for preview.',
+      reason: 'Checkout is not available right now. Email taopeng46@gmail.com.',
     }
   }
 
@@ -72,7 +72,9 @@ export async function openCheckout(opts?: {
     settings: {
       displayMode: 'overlay',
       theme: 'dark',
-      successUrl: opts?.successUrl || `${window.location.origin}${import.meta.env.BASE_URL}?unlocked=1`,
+      // Do not grant Lifetime from a query string. checkout.completed writes
+      // localStorage before Paddle navigates here.
+      successUrl: opts?.successUrl || `${window.location.origin}${import.meta.env.BASE_URL}`,
     },
   })
   return { mode: 'paddle', opened: true }

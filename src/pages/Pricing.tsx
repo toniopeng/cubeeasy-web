@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Paywall } from '../components/Paywall'
 import { FREE_RUNS, LIFETIME_PRICE_LABEL } from '../data/course'
 import { loadEntitlement, unlockLifetime } from '../lib/entitlement'
+import { paddleConfigured } from '../lib/paddle'
 import { pageDescription, pageTitle } from '../seo/content'
 import { usePageMeta } from '../seo/usePageMeta'
 
@@ -12,6 +13,7 @@ export function Pricing() {
   const [open, setOpen] = useState(false)
   const ent = loadEntitlement()
   const sandbox = params.get('sandbox') === '1'
+  const allowSimulate = sandbox && !paddleConfigured()
 
   return (
     <div className="page">
@@ -42,12 +44,11 @@ export function Pricing() {
       </p>
       <Paywall
         open={open}
-        allowSimulate={sandbox}
+        allowSimulate={allowSimulate}
         onClose={() => setOpen(false)}
-        onUnlockDemo={() => {
+        onUnlocked={() => {
           unlockLifetime(loadEntitlement())
           setOpen(false)
-          window.location.assign(`${import.meta.env.BASE_URL}?sandbox=1`)
         }}
       />
     </div>
