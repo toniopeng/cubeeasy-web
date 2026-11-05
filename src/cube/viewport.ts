@@ -152,7 +152,6 @@ export class CubeViewport {
   private orbitGesture: 'none' | 'orbit' | 'yaw' = 'none'
   /** While set, settleMainAngle keeps the middle-layer cue framing. */
   preserveView = false
-  private framedDistance: number | null = null
   private jobs: Array<() => Promise<void>> = []
   private draining = false
 
@@ -405,25 +404,34 @@ export class CubeViewport {
   }
 
   private updateFit(w: number, h: number) {
+    if (w < 8 || h < 8) return
     const fov = (this.camera.fov * Math.PI) / 180
     const aspect = w / h
     const verticalHalf = Math.tan(fov / 2)
-    const horizontalHalf = verticalHalf * Math.max(aspect, 0.05)
+    const horizontalHalf = verticalHalf * aspect
     const limit = Math.min(verticalHalf, horizontalHalf)
     this.distance = (2.55 * 1.18) / Math.max(limit, 0.08)
   }
 
-  resetCamera() {
+  /** Normal iOS lesson framing: rest angle, FOV 35, fit distance, no leftover orbit. */
+  resetTeachingFrame() {
+    this.preserveView = false
+    this.camera.fov = 35
+    this.camera.updateProjectionMatrix()
     const rest = restYawPitch()
     this.camYaw = rest.yaw
     this.camPitch = rest.pitch
     this.orbitRig.quaternion.identity()
-    this.preserveView = false
-    if (this.framedDistance != null) {
-      this.distance = this.framedDistance
-      this.framedDistance = null
-    }
+    const parent = this.canvas.parentElement
+    const w = Math.max(1, parent?.clientWidth || this.canvas.clientWidth || 320)
+    const h = Math.max(1, parent?.clientHeight || this.canvas.clientHeight || 320)
+    this.camera.aspect = w / Math.max(h, 1)
+    this.updateFit(w, h)
     this.placeCamera()
+  }
+
+  resetCamera() {
+    this.resetTeachingFrame()
   }
 
   async settleMainAngle() {
@@ -1140,8 +1148,8 @@ export class CubeViewport {
     while (angle > Math.PI) angle -= Math.PI * 2
     while (angle < -Math.PI) angle += Math.PI * 2
     this.orbitRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle)
-    if (this.framedDistance == null) this.framedDistance = this.distance
-    this.distance = this.framedDistance * 1.16
+    // Temporary cue zoom only. Lesson start recomputes the teaching distance.
+    this.distance *= 1.08
     this.placeCamera()
   }
 

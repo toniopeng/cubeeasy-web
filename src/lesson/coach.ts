@@ -200,6 +200,8 @@ export class LessonCoach {
 
   start(step: number) {
     this.stopGuidance()
+    // Drop any Reset-spin or cue zoom so Play / layer jumps use the normal lesson frame.
+    this.scene.resetTeachingFrame()
     this.step = step
     this.practiceOrbit = false
     this.padUnlocked = false
