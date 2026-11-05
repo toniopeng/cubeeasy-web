@@ -1107,36 +1107,8 @@ export class CubeViewport {
   }
 
   /**
-   * Exclamation marks in front of each cue, wide face toward the camera,
-   * so none of them sit edge-on or behind the cube.
-   */
-  showCueMarks(points: Vec3[]) {
-    this.hideRepeatMark()
-    const cam = new THREE.Vector3()
-    const dir = this.localCameraDir()
-    cam.set(dir.x, 0, dir.z)
-    if (cam.lengthSq() < 1e-6) cam.set(0, 0, 1)
-    cam.normalize()
-    const seen = new Set<string>()
-    for (const pt of points) {
-      const id = `${Math.round(pt.x * 4)},${Math.round(pt.y * 4)},${Math.round(pt.z * 4)}`
-      if (seen.has(id)) continue
-      seen.add(id)
-      const p = new THREE.Vector3(pt.x, pt.y, pt.z).add(cam.clone().multiplyScalar(0.62))
-      p.y += 0.36
-      const mark = this.makeBang()
-      mark.scale.setScalar(0.9)
-      mark.position.copy(p)
-      mark.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), cam)
-      mark.userData.baseY = p.y
-      this.cubeRoot.add(mark)
-      this.markNodes.push(mark)
-    }
-  }
-
-  /**
-   * Spin the cube (not the teaching yaw) so the cue cluster faces the camera,
-   * and step the camera back so the marks are not clipped.
+   * Spin the cube (not the teaching yaw) so the narrow arrow and the solving
+   * pieces face the camera, and step back so the arrow is not clipped.
    */
   frameCues(localPoints: Vec3[]) {
     const yawQ = this.cubeRoot.quaternion

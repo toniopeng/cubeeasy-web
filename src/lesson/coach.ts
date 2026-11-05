@@ -675,9 +675,10 @@ export class LessonCoach {
       guideTo?: Vec3 | null
       anchor?: Vec3 | null
       firstFormula?: boolean
+      marks?: boolean
     } = {},
   ) {
-    const { stay = false, guideFrom = null, guideTo = null, anchor = null, firstFormula = false } = opts
+    const { stay = false, guideFrom = null, guideTo = null, anchor = null, firstFormula = false, marks = true } = opts
     let revealed = false
     let spins = 0
     while (this.token === token) {
@@ -703,6 +704,7 @@ export class LessonCoach {
           anchor,
           returnHome: !stay,
           firstFormula,
+          marks,
         }))
       )
         return false
@@ -1209,7 +1211,7 @@ export class LessonCoach {
             alg,
             () => middlePlan(this.model, top)?.yaw ?? this.model.yaw,
             () => midSolved(this.model, top),
-            { stay: true, anchor: top },
+            { stay: true, marks: false },
           ))
         )
           return
@@ -1270,7 +1272,7 @@ export class LessonCoach {
               const p = pieceHome(this.model, stuck)
               return (p && p.pos.y === 1) || midSolved(this.model, stuck)
             },
-            { stay: true, anchor: stuck },
+            { stay: true, marks: false },
           ))
         )
           return
@@ -1306,8 +1308,8 @@ export class LessonCoach {
 
   /**
    * To-the-right middle insert: after the highlight, yaw and orbit so the
-   * piece, the slot, both centers, their ! marks, and the narrow arrow sit
-   * on the side facing the camera.
+   * narrow arrow and the solving pieces sit on the side facing the camera.
+   * No exclamation marks.
    */
   private async presentMiddleRight(
     token: number,
@@ -1322,8 +1324,8 @@ export class LessonCoach {
     const yaw = bestVisibleYaw(cues)
     await this.scene.animateYaw(yaw)
     if (this.token !== token) return false
+    this.scene.hideRepeatMark()
     const facing = this.scene.localCameraDir()
-    this.scene.showCueMarks(cues)
     this.scene.narrowArrow(piece, slot, facing)
     this.scene.frameCues(cues)
     this.scene.preserveView = true
