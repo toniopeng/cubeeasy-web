@@ -220,7 +220,7 @@ export function Learn() {
   const playDisabled = snap.inputLocked || (snap.step > 0 && !snap.playWillAct)
 
   function layerSelected(layers: number) {
-    if (layers === 1) return snap.step === 2
+    if (layers === 1) return snap.step === 1 || snap.step === 2
     if (layers === 2) return snap.step === 3
     return snap.step >= 4 && snap.step <= 7
   }
@@ -260,7 +260,7 @@ export function Learn() {
           <div className="overlay-br">
             <button
               className={`layer-btn ${layerSelected(1) ? 'on' : ''}`}
-              onClick={() => begin(2)}
+              onClick={() => begin(1)}
               aria-label="Bottom layer"
             >
               <LayerGlyph layers={1} />

@@ -661,12 +661,13 @@ export class CubeViewport {
         direction = right.clone().negate()
         break
     }
-    // World-space face normal after cubeRoot orientation
+    // World-space face normal after the full visual pose (orbit + lesson yaw).
+    const visual = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
     let best: Face = 'F'
     let bestDot = -2
     for (const face of Object.keys(FACE_NORMAL) as Face[]) {
       const n = FACE_NORMAL[face]
-      const world = new THREE.Vector3(n.x, n.y, n.z).applyQuaternion(this.cubeRoot.quaternion).normalize()
+      const world = new THREE.Vector3(n.x, n.y, n.z).applyQuaternion(visual).normalize()
       const dot = world.dot(direction)
       if (dot > bestDot) {
         bestDot = dot
