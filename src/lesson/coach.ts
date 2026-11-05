@@ -51,8 +51,8 @@ import {
   uMovesUntilTwistedAtUFR,
   ufrSlot,
   whiteDir,
+  bestVisibleYaw,
   yawFor,
-  yawFront,
   yawRight,
   yellowAlignMoves,
   yellowDir,
@@ -558,6 +558,10 @@ export class LessonCoach {
     this.inputLocked = false
     this.emit()
     await this.wait()
+    if (this.token !== token) return false
+    // The right-pattern cue pose is held only until Play. Turns use the teaching angle.
+    this.scene.preserveView = false
+    await this.scene.settleMainAngle()
     if (this.token !== token) return false
     this.scene.hideRepeatMark()
     this.scene.hideGuideArrow()
@@ -1184,9 +1188,11 @@ export class LessonCoach {
         }
         this.inputLocked = true
         this.emit()
-        // Highlight finished. Square the insert to the camera so the narrow
-        // arrow and the pieces being solved are face-on, not on the side.
-        if (
+        // Highlight finished. For the to-the-right pattern, spin until every
+        // exclamation mark and solving piece is on the camera side.
+        if (aligned.right) {
+          if (!(await this.presentMiddleRight(token, from, top, aligned.side, aligned.roof))) return
+        } else if (
           !(await this.presentMiddleArrow(
             token,
             aligned.yaw,
@@ -1248,11 +1254,9 @@ export class LessonCoach {
           this.emit()
         }
         const shown = pieceHome(this.model, stuck)?.pos ?? pos
-        const facing = this.middleFaceNormal(shown)
-        const faceYaw = yawFront(facing)
-        const right = this.viewRight(faceYaw)
-        const arrowTo = v3(shown.x + right.x * 1.2, shown.y, shown.z + right.z * 1.2)
-        if (!(await this.presentMiddleArrow(token, faceYaw, shown, arrowTo, facing))) return
+        const faces = this.middleColorPairs(stuck).map((pair) => pair[0].face)
+        if (!(await this.presentMiddleRight(token, shown, stuck, faces[0] ?? 'F', faces[1] ?? faces[0] ?? 'R')))
+          return
         this.showStep3(stuck)
         if (
           !(await this.playUntil(
@@ -1301,6 +1305,32 @@ export class LessonCoach {
   }
 
   /**
+   * To-the-right middle insert: after the highlight, yaw and orbit so the
+   * piece, the slot, both centers, their ! marks, and the narrow arrow sit
+   * on the side facing the camera.
+   */
+  private async presentMiddleRight(
+    token: number,
+    piece: Vec3,
+    slot: Vec3,
+    side: Face,
+    roof: Face,
+  ) {
+    await this.scene.settleMainAngle()
+    if (this.token !== token) return false
+    const cues = [piece, slot, FACE_NORMAL[side], FACE_NORMAL[roof]]
+    const yaw = bestVisibleYaw(cues)
+    await this.scene.animateYaw(yaw)
+    if (this.token !== token) return false
+    const facing = this.scene.localCameraDir()
+    this.scene.showCueMarks(cues)
+    this.scene.narrowArrow(piece, slot, facing)
+    this.scene.frameCues(cues)
+    this.scene.preserveView = true
+    return true
+  }
+
+  /**
    * After the middle-layer highlight, yaw the insert face toward the camera
    * and draw the thin "to the right / left" arrow in that view.
    */
@@ -1317,21 +1347,6 @@ export class LessonCoach {
     if (this.token !== token) return false
     this.scene.narrowArrow(from, to, facing)
     return this.token === token
-  }
-
-  /** Face of a middle edge that we square to the camera. */
-  private middleFaceNormal(pos: Vec3): Vec3 {
-    if (pos.z !== 0) return v3(0, 0, pos.z > 0 ? 1 : -1)
-    if (pos.x !== 0) return v3(pos.x > 0 ? 1 : -1, 0, 0)
-    return v3(0, 0, 1)
-  }
-
-  /** Model-space direction that becomes view-right (+X) after `yaw` quarter-turns. */
-  private viewRight(yaw: number): Vec3 {
-    let v = v3(1, 0, 0)
-    const turns = ((yaw % 4) + 4) % 4
-    for (let i = 0; i < turns; i++) v = v3(-v.z, v.y, v.x)
-    return v
   }
 
   private yawShowingCue(from: Vec3, _to: Vec3, _faces: Face[]): number {

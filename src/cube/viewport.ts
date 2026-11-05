@@ -150,6 +150,9 @@ export class CubeViewport {
   private pointers = new Map<number, { x: number; y: number }>()
   private lastCentroid = { x: 0, y: 0 }
   private orbitGesture: 'none' | 'orbit' | 'yaw' = 'none'
+  /** While set, settleMainAngle keeps the middle-layer cue framing. */
+  preserveView = false
+  private framedDistance: number | null = null
   private jobs: Array<() => Promise<void>> = []
   private draining = false
 
@@ -262,6 +265,7 @@ export class CubeViewport {
     this.token.n++
     this.hideGuideArrow()
     this.hideRepeatMark()
+    this.preserveView = false
     this.suppressMarks = false
     this.watchHomes = null
     this.watchStickers = null
@@ -400,10 +404,16 @@ export class CubeViewport {
     this.camYaw = rest.yaw
     this.camPitch = rest.pitch
     this.orbitRig.quaternion.identity()
+    this.preserveView = false
+    if (this.framedDistance != null) {
+      this.distance = this.framedDistance
+      this.framedDistance = null
+    }
     this.placeCamera()
   }
 
   async settleMainAngle() {
+    if (this.preserveView) return
     this.resetCamera()
   }
 
@@ -1087,6 +1097,61 @@ export class CubeViewport {
     g.add(cone)
     this.cubeRoot.add(g)
     this.arrowNode = g
+  }
+
+  /** Cube-local direction from the origin toward the teaching camera. */
+  localCameraDir(): Vec3 {
+    const cam = REST.clone().normalize()
+    cam.applyQuaternion(this.cubeRoot.quaternion.clone().invert())
+    return { x: cam.x, y: cam.y, z: cam.z }
+  }
+
+  /**
+   * Exclamation marks in front of each cue, wide face toward the camera,
+   * so none of them sit edge-on or behind the cube.
+   */
+  showCueMarks(points: Vec3[]) {
+    this.hideRepeatMark()
+    const cam = new THREE.Vector3()
+    const dir = this.localCameraDir()
+    cam.set(dir.x, 0, dir.z)
+    if (cam.lengthSq() < 1e-6) cam.set(0, 0, 1)
+    cam.normalize()
+    const seen = new Set<string>()
+    for (const pt of points) {
+      const id = `${Math.round(pt.x * 4)},${Math.round(pt.y * 4)},${Math.round(pt.z * 4)}`
+      if (seen.has(id)) continue
+      seen.add(id)
+      const p = new THREE.Vector3(pt.x, pt.y, pt.z).add(cam.clone().multiplyScalar(0.62))
+      p.y += 0.36
+      const mark = this.makeBang()
+      mark.scale.setScalar(0.9)
+      mark.position.copy(p)
+      mark.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), cam)
+      mark.userData.baseY = p.y
+      this.cubeRoot.add(mark)
+      this.markNodes.push(mark)
+    }
+  }
+
+  /**
+   * Spin the cube (not the teaching yaw) so the cue cluster faces the camera,
+   * and step the camera back so the marks are not clipped.
+   */
+  frameCues(localPoints: Vec3[]) {
+    const yawQ = this.cubeRoot.quaternion
+    const worlds = localPoints.map((p) => new THREE.Vector3(p.x, p.y, p.z).applyQuaternion(yawQ))
+    const centroid = new THREE.Vector3()
+    for (const w of worlds) centroid.add(w)
+    if (worlds.length) centroid.multiplyScalar(1 / worlds.length)
+    const cam = new THREE.Vector3(REST.x, 0, REST.z)
+    let angle = Math.atan2(cam.x, cam.z) - Math.atan2(centroid.x, centroid.z)
+    while (angle > Math.PI) angle -= Math.PI * 2
+    while (angle < -Math.PI) angle += Math.PI * 2
+    this.orbitRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle)
+    if (this.framedDistance == null) this.framedDistance = this.distance
+    this.distance = this.framedDistance * 1.16
+    this.placeCamera()
   }
 
   showRepeatMark(near: Vec3) {

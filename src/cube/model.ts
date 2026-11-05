@@ -303,6 +303,43 @@ export function yawFront(normal: Vec3): number {
   return 0
 }
 
+/** Teaching camera, horizontal. Matches CubeViewport REST (6.2, _, 7.6). */
+const TEACH_CAM_XZ = { x: 6.2, z: 7.6 }
+
+function cameraXZInModel(yaw: number): Vec3 {
+  const len = Math.hypot(TEACH_CAM_XZ.x, TEACH_CAM_XZ.z)
+  let v = v3(TEACH_CAM_XZ.x / len, 0, TEACH_CAM_XZ.z / len)
+  const turns = ((yaw % 4) + 4) % 4
+  // Inverse of ry (+90° Y): (x, z) -> (-z, x).
+  for (let i = 0; i < turns; i++) v = v3(-v.z, 0, v.x)
+  return v
+}
+
+/**
+ * Quarter-turn that puts every cue point on the camera side of the cube.
+ * A negative score means that yaw hides a point behind the cube.
+ */
+export function bestVisibleYaw(points: Vec3[]): number {
+  let best = 0
+  let bestScore = -Infinity
+  for (let yaw = 0; yaw < 4; yaw++) {
+    const cam = cameraXZInModel(yaw)
+    let min = Infinity
+    let sum = 0
+    for (const p of points) {
+      const d = p.x * cam.x + p.z * cam.z
+      min = Math.min(min, d)
+      sum += d
+    }
+    const score = min * 8 + sum
+    if (score > bestScore) {
+      bestScore = score
+      best = yaw
+    }
+  }
+  return best
+}
+
 export function yawRight(normal: Vec3): number {
   for (let k = 0; k < 4; k++) {
     const v = ry(normal, k)
