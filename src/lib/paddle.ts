@@ -6,8 +6,9 @@
  *   VITE_PADDLE_PRICE_ID      — Lifetime price id (pri_…)
  *   VITE_PADDLE_ENV           — sandbox | production (default sandbox)
  *
- * Without tokens, openCheckout() returns { mode: 'placeholder' } so the UI
- * can show a sandbox-looking sheet instead of failing.
+ * Without tokens, openCheckout() returns { mode: 'placeholder' } and does not
+ * unlock. A free "Simulate purchase" button is not shown unless the page
+ * was opened with ?sandbox=1.
  */
 
 export type CheckoutResult =

@@ -1,18 +1,19 @@
 import { useState } from 'react'
 import { LIFETIME_PRICE_LABEL } from '../data/course'
-import { openCheckout, paddleConfigured } from '../lib/paddle'
+import { openCheckout } from '../lib/paddle'
 
 type Props = {
   open: boolean
   onClose: () => void
   onUnlockDemo: () => void
+  /** Only for ?sandbox=1. Production visitors must not get a free Lifetime button. */
+  allowSimulate?: boolean
 }
 
 /** Matches iOS PaywallView: Unlock CubeEasy, yellow Unlock, Restore, Not now. */
-export function Paywall({ open, onClose, onUnlockDemo }: Props) {
+export function Paywall({ open, onClose, onUnlockDemo, allowSimulate = false }: Props) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
-  const configured = paddleConfigured()
 
   if (!open) return null
 
@@ -51,7 +52,7 @@ export function Paywall({ open, onClose, onUnlockDemo }: Props) {
         <button className="paywall-unlock" disabled={busy} onClick={checkout}>
           {busy ? '…' : `Unlock · ${LIFETIME_PRICE_LABEL}`}
         </button>
-        {!configured && (
+        {allowSimulate && (
           <button className="paywall-restore" onClick={onUnlockDemo}>
             Simulate purchase (sandbox)
           </button>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Paywall } from '../components/Paywall'
 import { FREE_RUNS, LIFETIME_PRICE_LABEL } from '../data/course'
 import { loadEntitlement, unlockLifetime } from '../lib/entitlement'
@@ -8,8 +8,10 @@ import { usePageMeta } from '../seo/usePageMeta'
 
 export function Pricing() {
   usePageMeta('/pricing', pageTitle('/pricing'), pageDescription('/pricing'))
+  const [params] = useSearchParams()
   const [open, setOpen] = useState(false)
   const ent = loadEntitlement()
+  const sandbox = params.get('sandbox') === '1'
 
   return (
     <div className="page">
@@ -40,11 +42,12 @@ export function Pricing() {
       </p>
       <Paywall
         open={open}
+        allowSimulate={sandbox}
         onClose={() => setOpen(false)}
         onUnlockDemo={() => {
           unlockLifetime(loadEntitlement())
           setOpen(false)
-          window.location.assign(`${import.meta.env.BASE_URL}?unlocked=1`)
+          window.location.assign(`${import.meta.env.BASE_URL}?sandbox=1`)
         }}
       />
     </div>

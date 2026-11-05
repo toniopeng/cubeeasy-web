@@ -22,6 +22,7 @@ import {
   type EntitlementState,
 } from '../lib/entitlement'
 import { LIFETIME_PRICE_LABEL } from '../data/course'
+import { paddleConfigured } from '../lib/paddle'
 import { GuideArticle } from '../seo/GuideArticle'
 import { HOME_DESCRIPTION, HOME_TITLE } from '../seo/content'
 import { usePageMeta } from '../seo/usePageMeta'
@@ -147,8 +148,13 @@ export function Learn() {
     }
   }, [])
 
+  const sandbox = params.get('sandbox') === '1'
+
   useEffect(() => {
-    if (params.get('unlocked') === '1' && !ent.isLifetime) {
+    // ?unlocked=1 is the Paddle success return, or an explicit sandbox test.
+    // A normal visit must not become Lifetime.
+    const allowReturnUnlock = sandbox || paddleConfigured()
+    if (params.get('unlocked') === '1' && allowReturnUnlock && !ent.isLifetime) {
       setEnt(unlockLifetime(ent))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -366,6 +372,7 @@ export function Learn() {
 
       <Paywall
         open={showPaywall}
+        allowSimulate={sandbox}
         onClose={() => {
           setShowPaywall(false)
           if (ent.isLifetime && pendingStep != null) {
