@@ -530,6 +530,10 @@ button { font: inherit; }
   background: rgba(0,0,0,0.35);
   display: flex; align-items: flex-end; justify-content: center;
 }
+.formulas-sheet.is-closed {
+  visibility: hidden;
+  pointer-events: none;
+}
 .formulas-panel {
   width: min(560px, 100%);
   max-height: 92dvh;

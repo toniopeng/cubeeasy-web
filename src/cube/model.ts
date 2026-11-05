@@ -729,9 +729,90 @@ function finishDaisy(state: CubeState): void {
 }
 
 type Snap = { x: number; y: number; z: number; wx: number; wy: number; wz: number }
-function snapKey(s: Snap) {
-  return `${s.x},${s.y},${s.z},${s.wx},${s.wy},${s.wz}`
+
+/** 18 face turns in the same order the daisy search has always expanded. */
+const DAISY_MOVES: Move[] = []
+{
+  const faces: Face[] = ['U', 'D', 'R', 'L', 'F', 'B']
+  const suffixes: Suffix[] = ['none', 'prime', 'two']
+  for (const face of faces) {
+    for (const suffix of suffixes) DAISY_MOVES.push({ face, suffix })
+  }
 }
+
+function packDir(wx: number, wy: number, wz: number): number {
+  if (wx === 1) return 0
+  if (wx === -1) return 1
+  if (wy === 1) return 2
+  if (wy === -1) return 3
+  if (wz === 1) return 4
+  return 5
+}
+function packEdge(x: number, y: number, z: number, wx: number, wy: number, wz: number): number {
+  const p = (x + 1) * 9 + (y + 1) * 3 + (z + 1)
+  return p * 6 + packDir(wx, wy, wz)
+}
+const DIR_VEC: [number, number, number][] = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+]
+/** move → packed edge (0..161) → packed edge. Built once from the same turn math. */
+const DAISY_TABLE: number[][] = DAISY_MOVES.map((move) => {
+  const rot = quarter(FACE_AXIS[move.face], plusQuarters(move))
+  const axis = FACE_AXIS[move.face]
+  const layer = FACE_LAYER[move.face]
+  const table = new Array<number>(162)
+  for (let e = 0; e < 162; e++) {
+    const p = (e / 6) | 0
+    const d = e % 6
+    const x = (p / 9) | 0
+    const y = ((p / 3) | 0) % 3
+    const z = p % 3
+    const pos = v3(x - 1, y - 1, z - 1)
+    const [wx, wy, wz] = DIR_VEC[d]
+    if (component(pos, axis) !== layer) {
+      table[e] = e
+      continue
+    }
+    const turned = applyMat(rot, pos)
+    const white = applyMat(rot, v3(wx, wy, wz))
+    table[e] = packEdge(turned.x, turned.y, turned.z, white.x, white.y, white.z)
+  }
+  return table
+})
+
+function packDaisy(snaps: Snap[]): number {
+  let key = 0
+  for (let i = 0; i < 4; i++) {
+    const s = snaps[i]
+    key |= packEdge(s.x, s.y, s.z, s.wx, s.wy, s.wz) << (i * 8)
+  }
+  return key >>> 0
+}
+function turnDaisyKey(key: number, move: number): number {
+  const table = DAISY_TABLE[move]
+  let out = 0
+  for (let i = 0; i < 4; i++) {
+    const e = (key >>> (i * 8)) & 255
+    out |= table[e] << (i * 8)
+  }
+  return out >>> 0
+}
+function daisyKeyDone(key: number): boolean {
+  // White pointing up (dir 2) and the piece on the top layer (y+1 === 2).
+  for (let i = 0; i < 4; i++) {
+    const e = (key >>> (i * 8)) & 255
+    if (e % 6 !== 2) return false
+    const p = (e / 6) | 0
+    if ((((p / 3) | 0) % 3) !== 2) return false
+  }
+  return true
+}
+
 function daisyKey(state: CubeState): Snap[] {
   return WHITE_EDGES.map((edge) => {
     const piece = pieceHome(state, edge.home) ?? {
@@ -743,59 +824,56 @@ function daisyKey(state: CubeState): Snap[] {
     return { x: piece.pos.x, y: piece.pos.y, z: piece.pos.z, wx: w.x, wy: w.y, wz: w.z }
   })
 }
-function daisyDone(snaps: Snap[]) {
+function daisyDone(snaps: Snap[]): boolean {
   return snaps.every((s) => s.y === 1 && s.wy === 1 && s.wx === 0 && s.wz === 0)
 }
-function applySnapKey(snaps: Snap[], move: Move): Snap[] {
-  const rot = quarter(FACE_AXIS[move.face], plusQuarters(move))
-  return snaps.map((snap) => {
-    const pos = v3(snap.x, snap.y, snap.z)
-    if (component(pos, FACE_AXIS[move.face]) !== FACE_LAYER[move.face]) return snap
-    const turned = applyMat(rot, pos)
-    const white = applyMat(rot, v3(snap.wx, snap.wy, snap.wz))
-    return { x: turned.x, y: turned.y, z: turned.z, wx: white.x, wy: white.y, wz: white.z }
-  })
-}
+
+const daisyCache = new Map<number, Move[]>()
 
 export function daisyMoves(state: CubeState): Move[] {
-  const start = daisyKey(state)
-  if (daisyDone(start)) return []
-  const startK = start.map(snapKey).join('|')
-  const parent = new Map<string, { prev: string; move: Move; snaps: Snap[] }>()
-  const seen = new Set<string>([startK])
-  const queue: { k: string; snaps: Snap[] }[] = [{ k: startK, snaps: start }]
-  let found: string | null = null
-  const alphabet: Face[] = ['U', 'D', 'R', 'L', 'F', 'B']
-  const suffixes: Suffix[] = ['none', 'prime', 'two']
+  const startSnaps = daisyKey(state)
+  if (daisyDone(startSnaps)) return []
+  const start = packDaisy(startSnaps)
+  const cached = daisyCache.get(start)
+  if (cached) return cached.map((m) => ({ face: m.face, suffix: m.suffix }))
+  const parentPrev = new Map<number, number>()
+  const parentMove = new Map<number, number>()
+  const seen = new Set<number>([start])
+  const queue = new Uint32Array(200001)
+  queue[0] = start
   let head = 0
-  while (head < queue.length) {
+  let tail = 1
+  let found: number | null = null
+  while (head < tail) {
     const cur = queue[head++]
-    if (daisyDone(cur.snaps)) {
-      found = cur.k
+    if (daisyKeyDone(cur)) {
+      found = cur
       break
     }
-    for (const face of alphabet) {
-      for (const suffix of suffixes) {
-        const move = { face, suffix }
-        const next = applySnapKey(cur.snaps, move)
-        const nk = next.map(snapKey).join('|')
-        if (seen.has(nk)) continue
-        seen.add(nk)
-        parent.set(nk, { prev: cur.k, move, snaps: next })
-        queue.push({ k: nk, snaps: next })
-      }
+    if (tail > 200000) break
+    for (let m = 0; m < 18; m++) {
+      const next = turnDaisyKey(cur, m)
+      if (seen.has(next)) continue
+      seen.add(next)
+      parentPrev.set(next, cur)
+      parentMove.set(next, m)
+      queue[tail++] = next
+      if (tail > 200000) break
     }
-    if (seen.size > 200000) break
   }
-  if (!found) return []
+  if (found == null) {
+    daisyCache.set(start, [])
+    return []
+  }
   const moves: Move[] = []
   let cursor = found
-  while (parent.has(cursor)) {
-    const p = parent.get(cursor)!
-    moves.push(p.move)
-    cursor = p.prev
+  while (parentMove.has(cursor)) {
+    moves.push(DAISY_MOVES[parentMove.get(cursor)!])
+    cursor = parentPrev.get(cursor)!
   }
-  return moves.reverse()
+  moves.reverse()
+  daisyCache.set(start, moves)
+  return moves.map((m) => ({ face: m.face, suffix: m.suffix }))
 }
 
 function solveCorners(state: CubeState): void {
@@ -895,7 +973,17 @@ export function teachingDaisy(): CubeState {
   return cube
 }
 
+const preparedCache = new Map<Stage, CubeState>()
+
 export function prepared(stage: Stage): CubeState {
+  const hit = preparedCache.get(stage)
+  if (hit) return cloneState(hit)
+  const cube = buildPrepared(stage)
+  preparedCache.set(stage, cube)
+  return cloneState(cube)
+}
+
+function buildPrepared(stage: Stage): CubeState {
   let scramble = parseMoves(FIXED_SCRAMBLE)
   let tries = 0
   while (true) {

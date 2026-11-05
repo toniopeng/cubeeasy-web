@@ -183,17 +183,16 @@ export function MiddleSlideCard({
 }
 
 /** Place-corners 4-corner chip with purple narrow arrow cycle DL→UR→UL→DL. */
-export function PlaceCornersPattern({ side = 50.4 }: { side?: number }) {
+export function PlaceCornersPattern({ side = 50.4, active = true }: { side?: number; active?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const canvas = ref.current
-    if (!canvas) return
+    if (!canvas || !active) return
     let raf = 0
     const dpr = Math.min(2, window.devicePixelRatio || 1)
     canvas.width = side * dpr
     canvas.height = side * dpr
-
     const square = side * 0.22
     const inset = side * 0.13
     const spots = [
@@ -285,7 +284,7 @@ export function PlaceCornersPattern({ side = 50.4 }: { side?: number }) {
     }
     raf = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf)
-  }, [side])
+  }, [side, active])
 
   return (
     <canvas
@@ -330,15 +329,34 @@ function roundRect(
 }
 
 /** Real three.js plastic cube — same TeachingCubeStyle as iOS StepPreview. */
-export function StepPreviewMini({ step, side = 92 }: { step: number; side?: number }) {
+export function StepPreviewMini({
+  step,
+  side = 92,
+  active = true,
+  blit = false,
+}: {
+  step: number
+  side?: number
+  active?: boolean
+  blit?: boolean
+}) {
   const ref = useRef<HTMLCanvasElement>(null)
+  const cube = useRef<MiniTeachingCube | null>(null)
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
-    const mini = new MiniTeachingCube(canvas, side)
+    const mini = new MiniTeachingCube(canvas, side, blit)
+    cube.current = mini
     mini.show({ kind: 'step', step })
-    return () => mini.dispose()
-  }, [step, side])
+    if (!active) mini.setSpinning(false)
+    return () => {
+      mini.dispose()
+      cube.current = null
+    }
+  }, [step, side, blit])
+  useEffect(() => {
+    cube.current?.setSpinning(active)
+  }, [active])
   return (
     <canvas
       ref={ref}
@@ -352,15 +370,15 @@ export function StepPreviewMini({ step, side = 92 }: { step: number; side?: numb
 }
 
 /** Twist-row cube: yellow top, red upper front, green upper right — iOS LastFormulaCube. */
-export function LastFormulaCube({ side = 68 }: { side?: number }) {
+export function LastFormulaCube({ side = 68, blit = false }: { side?: number; blit?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
     const canvas = ref.current
     if (!canvas) return
-    const mini = new MiniTeachingCube(canvas, side)
+    const mini = new MiniTeachingCube(canvas, side, blit)
     mini.show({ kind: 'twist' })
     return () => mini.dispose()
-  }, [side])
+  }, [side, blit])
   return (
     <canvas
       ref={ref}

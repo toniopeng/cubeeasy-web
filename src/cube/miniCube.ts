@@ -173,6 +173,33 @@ export type MiniMode =
   | { kind: 'twist' }
   | { kind: 'layers'; layers: 1 | 2 | 3 }
 
+let sharedCanvas: HTMLCanvasElement | null = null
+let sharedRenderer: THREE.WebGLRenderer | null = null
+
+function sharedMiniRenderer(side: number): THREE.WebGLRenderer {
+  if (!sharedCanvas || !sharedRenderer) {
+    sharedCanvas = document.createElement('canvas')
+    sharedRenderer = new THREE.WebGLRenderer({
+      canvas: sharedCanvas,
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+      powerPreference: 'low-power',
+    })
+    sharedRenderer.outputColorSpace = THREE.SRGBColorSpace
+    sharedRenderer.toneMapping = THREE.NoToneMapping
+  }
+  const ratio = Math.min(2, window.devicePixelRatio || 1)
+  sharedRenderer.setPixelRatio(ratio)
+  sharedRenderer.setSize(side, side, false)
+  return sharedRenderer
+}
+
+/** Warm the cached teaching cubes the formula sheet draws, off the click path. */
+export function warmFormulaPoses(): void {
+  for (const step of [2, 3, 4, 5, 6]) stepGoal(step)
+}
+
 export class MiniTeachingCube {
   private renderer: THREE.WebGLRenderer
   private scene = new THREE.Scene()
@@ -181,18 +208,29 @@ export class MiniTeachingCube {
   private raf = 0
   private disposed = false
   private spinId = 0
+  private spinTick: (() => void) | null = null
+  private readonly blit: boolean
+  private readonly view: HTMLCanvasElement
+  private readonly side: number
 
-  constructor(canvas: HTMLCanvasElement, side: number) {
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: true,
-      powerPreference: 'low-power',
-    })
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1))
-    this.renderer.setSize(side, side, false)
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace
-    this.renderer.toneMapping = THREE.NoToneMapping
+  constructor(canvas: HTMLCanvasElement, side: number, blit = false) {
+    this.view = canvas
+    this.side = side
+    this.blit = blit
+    this.renderer = blit
+      ? sharedMiniRenderer(side)
+      : new THREE.WebGLRenderer({
+          canvas,
+          antialias: true,
+          alpha: true,
+          powerPreference: 'low-power',
+        })
+    if (!blit) {
+      this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1))
+      this.renderer.setSize(side, side, false)
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace
+      this.renderer.toneMapping = THREE.NoToneMapping
+    }
     this.camera = new THREE.PerspectiveCamera(32, 1, 0.05, 40)
     this.scene.add(this.root)
 
@@ -205,10 +243,23 @@ export class MiniTeachingCube {
     placeCamera(this.camera, 8.4)
   }
 
+  /** Stop the yaw loop without throwing away the cube. */
+  setSpinning(on: boolean) {
+    if (!on) {
+      cancelAnimationFrame(this.raf)
+      this.raf = 0
+      return
+    }
+    if (this.raf || !this.spinTick) return
+    this.raf = requestAnimationFrame(this.spinTick)
+  }
+
   show(mode: MiniMode) {
     this.spinId++
+    this.spinTick = null
     const id = this.spinId
     cancelAnimationFrame(this.raf)
+    this.raf = 0
 
     if (mode.kind === 'layers') {
       this.camera.fov = 28
@@ -244,8 +295,10 @@ export class MiniTeachingCube {
     if (step === 2 || step === 3) {
       const tip = new THREE.Quaternion().setFromAxisAngle(viewRight(), 1.05)
       this.root.quaternion.copy(tip)
+      this.renderOnce()
       let yaw = 0
       const tick = () => {
+        this.raf = 0
         if (this.disposed || this.spinId !== id) return
         yaw += 0.012
         if (yaw > Math.PI * 2) yaw -= Math.PI * 2
@@ -254,6 +307,7 @@ export class MiniTeachingCube {
         this.renderOnce()
         this.raf = requestAnimationFrame(tick)
       }
+      this.spinTick = tick
       this.raf = requestAnimationFrame(tick)
       return
     }
@@ -351,14 +405,21 @@ export class MiniTeachingCube {
 
   private renderOnce() {
     if (this.disposed) return
+    if (this.blit) sharedMiniRenderer(this.side)
     this.renderer.render(this.scene, this.camera)
+    if (!this.blit || !sharedCanvas) return
+    const ctx = this.view.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, this.view.width, this.view.height)
+    ctx.drawImage(sharedCanvas, 0, 0, this.view.width, this.view.height)
   }
 
   dispose() {
     this.disposed = true
     this.spinId++
+    this.spinTick = null
     cancelAnimationFrame(this.raf)
     this.clearRoot()
-    this.renderer.dispose()
+    if (!this.blit) this.renderer.dispose()
   }
 }
