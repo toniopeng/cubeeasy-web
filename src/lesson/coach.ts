@@ -545,7 +545,7 @@ export class LessonCoach {
     }
   }
 
-  private async oneCycle(moves: Move[], token: number, returnHome = true) {
+  private async oneCycle(moves: Move[], token: number, returnHome = true, projectYaw: number | null = null) {
     if (!moves.length) return this.token === token
     this.cancelWordLabels()
     this.inputLocked = true
@@ -560,12 +560,17 @@ export class LessonCoach {
     this.emit()
     await this.wait()
     if (this.token !== token) return false
-    // The right-pattern cue pose is held only until Play. Turns use the teaching angle.
-    this.scene.preserveView = false
-    await this.scene.settleMainAngle()
-    if (this.token !== token) return false
+    // The face-on cue is held only until Play. The formula then runs at its teaching yaw.
     this.scene.hideRepeatMark()
     this.scene.hideGuideArrow()
+    if (projectYaw != null) {
+      await this.scene.settleProjectPose(projectYaw)
+      if (this.token !== token) return false
+    } else {
+      this.scene.preserveView = false
+      await this.scene.settleMainAngle()
+      if (this.token !== token) return false
+    }
     this.inputLocked = true
     this.cancelWordLabels()
     this.emit()
@@ -630,6 +635,7 @@ export class LessonCoach {
       guides?: boolean
       marks?: boolean
       firstFormula?: boolean
+      projectYaw?: number | null
     } = {},
   ) {
     const {
@@ -640,6 +646,7 @@ export class LessonCoach {
       guides = true,
       marks = true,
       firstFormula = false,
+      projectYaw = null,
     } = opts
     if (revealed) {
       if (marks && anchor) this.scene.showRepeatMark(anchor)
@@ -662,7 +669,7 @@ export class LessonCoach {
         if (!(await this.pointAndHold(guideFrom, guideTo, token, false))) return false
       }
     }
-    return this.oneCycle(moves, token, returnHome)
+    return this.oneCycle(moves, token, returnHome, projectYaw)
   }
 
   private async playUntil(
@@ -677,9 +684,19 @@ export class LessonCoach {
       anchor?: Vec3 | null
       firstFormula?: boolean
       marks?: boolean
+      /** Lesson yaw the view-relative alg expects once Play leaves the face-on cue. */
+      projectYaw?: () => number
     } = {},
   ) {
-    const { stay = false, guideFrom = null, guideTo = null, anchor = null, firstFormula = false, marks = true } = opts
+    const {
+      stay = false,
+      guideFrom = null,
+      guideTo = null,
+      anchor = null,
+      firstFormula = false,
+      marks = true,
+      projectYaw,
+    } = opts
     let revealed = false
     let spins = 0
     while (this.token === token) {
@@ -698,6 +715,7 @@ export class LessonCoach {
           if (this.token !== token) return false
         }
       }
+      const posed = projectYaw ? projectYaw() : null
       if (
         !(await this.runFormula(moves, token, revealed, {
           guideFrom: revealed ? null : guideFrom,
@@ -706,6 +724,7 @@ export class LessonCoach {
           returnHome: !stay,
           firstFormula,
           marks,
+          projectYaw: posed,
         }))
       )
         return false
@@ -1197,7 +1216,11 @@ export class LessonCoach {
             alg,
             () => middlePlan(this.model, top)?.yaw ?? this.model.yaw,
             () => midSolved(this.model, top),
-            { stay: true, marks: false },
+            {
+              stay: true,
+              marks: false,
+              projectYaw: () => middlePlan(this.model, top)?.yaw ?? this.model.yaw,
+            },
           ))
         )
           return
@@ -1255,7 +1278,14 @@ export class LessonCoach {
               const p = pieceHome(this.model, stuck)
               return (p && p.pos.y === 1) || midSolved(this.model, stuck)
             },
-            { stay: true, marks: false },
+            {
+              stay: true,
+              marks: false,
+              projectYaw: () => {
+                const p = pieceHome(this.model, stuck)?.pos
+                return p ? yawFor(p.x, p.z) : this.model.yaw
+              },
+            },
           ))
         )
           return

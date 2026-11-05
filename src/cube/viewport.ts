@@ -439,6 +439,39 @@ export class CubeViewport {
     this.resetCamera()
   }
 
+  /**
+   * Leave the face-on cue and land on the lesson yaw the formula was written for.
+   * Orbit is folded into the cube first so the return starts from the view Tony
+   * is looking at, then the camera refits to the normal teaching frame.
+   */
+  async settleProjectPose(yaw: number) {
+    this.preserveView = false
+    const visual = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
+    this.orbitRig.quaternion.identity()
+    this.cubeRoot.quaternion.copy(visual)
+    this.camera.fov = 35
+    this.camera.updateProjectionMatrix()
+    const rest = restYawPitch()
+    this.camYaw = rest.yaw
+    this.camPitch = rest.pitch
+    const parent = this.canvas.parentElement
+    const w = Math.max(1, parent?.clientWidth || this.canvas.clientWidth || 320)
+    const h = Math.max(1, parent?.clientHeight || this.canvas.clientHeight || 320)
+    this.camera.aspect = w / Math.max(h, 1)
+    this.updateFit(w, h)
+    this.placeCamera()
+    const dest = ((yaw % 4) + 4) % 4
+    const target = this.orientationQuat(dest, this.model.flipped)
+    const my = this.token.n
+    if (this.cubeRoot.quaternion.angleTo(target) > 0.02) {
+      await this.slerpTo(target, this.teachMs(0.62), my)
+      if (this.token.n !== my) return
+    }
+    this.model.yaw = dest
+    this.cubeYawQuarters = dest
+    this.applyOrientationInstant()
+  }
+
   async restCamera() {
     this.resetCamera()
   }
