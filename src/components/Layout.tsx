@@ -13,6 +13,7 @@ export function Layout() {
           </Link>
           <nav className="nav">
             <NavLink to="/">Learn</NavLink>
+            <NavLink to="/guide">Guide</NavLink>
             <NavLink to="/pricing">Pricing</NavLink>
             <NavLink to="/support">Support</NavLink>
           </nav>
@@ -27,6 +28,7 @@ export function Layout() {
             <strong>CubeEasy</strong> — beginner 3×3 tutor
           </div>
           <div className="footer-links">
+            <Link to="/guide">Guide</Link>
             <Link to="/pricing">Pricing</Link>
             <Link to="/support">Support</Link>
             <Link to="/privacy">Privacy</Link>

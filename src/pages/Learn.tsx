@@ -22,6 +22,9 @@ import {
   type EntitlementState,
 } from '../lib/entitlement'
 import { LIFETIME_PRICE_LABEL } from '../data/course'
+import { GuideArticle } from '../seo/GuideArticle'
+import { HOME_DESCRIPTION, HOME_TITLE } from '../seo/content'
+import { usePageMeta } from '../seo/usePageMeta'
 
 const MOVE_TOKENS = ["U", "U'", "R", "R'", "L", "L'", "F", "F'", "D", "D'"] as const
 
@@ -109,6 +112,7 @@ const IDLE: CoachSnapshot = {
  * One-page LessonScreen — wired to LessonCoach (iOS teaching-v51 port).
  */
 export function Learn() {
+  usePageMeta('/', HOME_TITLE, HOME_DESCRIPTION)
   const [params] = useSearchParams()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const vpRef = useRef<CubeViewport | null>(null)
@@ -222,7 +226,11 @@ export function Learn() {
       <div className="studio-bg" aria-hidden />
       <div className="lesson-col">
         <div className="viewport-wrap">
-          <canvas ref={canvasRef} className="cube-canvas" />
+          <canvas
+            ref={canvasRef}
+            className="cube-canvas"
+            aria-label="Coached 3×3 cube. Drag to orbit after Reset."
+          />
           {snap.cheer !== 'none' && (
             <CheerBurst key={snap.cheerID} kind={snap.cheer} id={snap.cheerID} />
           )}
@@ -267,7 +275,10 @@ export function Learn() {
             </button>
           </div>
           <div className="overlay-tr">
-            <div className={`brand-capsule ${titleIn ? 'in' : ''}`}>CubeEasy</div>
+            <h1 className={`brand-capsule ${titleIn ? 'in' : ''}`}>
+              CubeEasy
+              <span className="visually-hidden">, beginner tutor to learn to solve a 3×3 cube</span>
+            </h1>
             <button className="formulas-btn" onClick={() => setShowFormulas(true)} aria-label="Formulas">
               <FormulaIcon />
             </button>
@@ -349,6 +360,10 @@ export function Learn() {
         >
           {ent.isLifetime ? 'Unlocked' : `Lifetime · ${LIFETIME_PRICE_LABEL}`}
         </button>
+        <details className="lesson-about">
+          <summary>About this tutor</summary>
+          <GuideArticle level="embed" />
+        </details>
       </div>
 
       <Paywall

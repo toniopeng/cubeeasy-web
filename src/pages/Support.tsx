@@ -1,4 +1,8 @@
+import { pageDescription, pageTitle } from '../seo/content'
+import { usePageMeta } from '../seo/usePageMeta'
+
 export function Support() {
+  usePageMeta('/support', pageTitle('/support'), pageDescription('/support'))
   return (
     <div className="page narrow">
       <p className="eyebrow">Support</p>
@@ -9,13 +13,13 @@ export function Support() {
       </p>
       <div className="card-stack">
         <article className="card">
-          <h3>Email</h3>
+          <h2>Email</h2>
           <p>
             <a href="mailto:tonypengcom@126.com">tonypengcom@126.com</a>
           </p>
         </article>
         <article className="card">
-          <h3>Free runs not resetting?</h3>
+          <h2>Free runs not resetting?</h2>
           <p>
             Entitlement lives in <code>localStorage</code> for this preview. Clearing site
             data resets free runs. After real Paddle webhooks, unlocks will follow your
@@ -23,7 +27,7 @@ export function Support() {
           </p>
         </article>
         <article className="card">
-          <h3>iOS app</h3>
+          <h2>iOS app</h2>
           <p>
             Looking for the App Store version? Search <strong>CubeEasy</strong> — Lifetime
             there is a separate IAP.

@@ -1,4 +1,8 @@
+import { pageDescription, pageTitle } from '../seo/content'
+import { usePageMeta } from '../seo/usePageMeta'
+
 export function Privacy() {
+  usePageMeta('/privacy', pageTitle('/privacy'), pageDescription('/privacy'))
   return (
     <div className="page narrow legal">
       <h1>Privacy</h1>
@@ -18,6 +22,7 @@ export function Privacy() {
 }
 
 export function Terms() {
+  usePageMeta('/terms', pageTitle('/terms'), pageDescription('/terms'))
   return (
     <div className="page narrow legal">
       <h1>Terms</h1>

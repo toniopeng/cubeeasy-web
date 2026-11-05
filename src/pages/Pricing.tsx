@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom'
 import { Paywall } from '../components/Paywall'
 import { FREE_RUNS, LIFETIME_PRICE_LABEL } from '../data/course'
 import { loadEntitlement, unlockLifetime } from '../lib/entitlement'
+import { pageDescription, pageTitle } from '../seo/content'
+import { usePageMeta } from '../seo/usePageMeta'
 
 export function Pricing() {
+  usePageMeta('/pricing', pageTitle('/pricing'), pageDescription('/pricing'))
   const [open, setOpen] = useState(false)
   const ent = loadEntitlement()
 
@@ -20,8 +23,11 @@ export function Pricing() {
       <ul>
         <li>Unlimited beginner course runs</li>
         <li>All 7 steps with Play cycles</li>
-        <li>Web on phone & desktop</li>
+        <li>Web on phone and desktop</li>
       </ul>
+      <p>
+        <Link to="/guide">Read the 7-step method</Link> before you start, or open the tutor and press Play.
+      </p>
       {ent.isLifetime ? (
         <Link className="btn btn-primary" to="/">Open course</Link>
       ) : (
