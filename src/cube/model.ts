@@ -6,17 +6,17 @@ export type Suffix = 'none' | 'prime' | 'two'
 export type Vec3 = { x: number; y: number; z: number }
 
 export const COLORS = {
-  U: '#fff200',
-  D: '#f0f0f0',
-  F: '#00e632',
-  R: '#ff7f00',
-  L: '#c01a16',
-  B: '#1a40c2',
+  U: '#FFEA00',
+  D: '#FFFFFF',
+  F: '#00E03C',
+  R: '#FF5E00',
+  L: '#FF1D1A',
+  B: '#0051FF',
   body: '#0a0a0a',
   grayed: '#3a3a3a',
   faceletGray: '#4e4e4e',
   ink: '#1b1d22',
-  purple: '#8b55d5',
+  purple: '#7A22F5',
 } as const
 
 export const FACE_NORMAL: Record<Face, Vec3> = {

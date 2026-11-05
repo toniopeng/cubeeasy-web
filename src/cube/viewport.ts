@@ -129,9 +129,6 @@ export class CubeViewport {
   private raf = 0
   private disposed = false
   practiceOrbit = true
-  private dragging = false
-  private lastX = 0
-  private lastY = 0
   private camYaw: number
   private camPitch: number
   private distance = 7.2
@@ -149,6 +146,10 @@ export class CubeViewport {
   private arrowNode: THREE.Object3D | null = null
   private cubeYawQuarters = 0
   private cubeFlipped = false
+  private orbitRig: THREE.Group
+  private pointers = new Map<number, { x: number; y: number }>()
+  private lastCentroid = { x: 0, y: 0 }
+  private orbitGesture: 'none' | 'orbit' | 'yaw' = 'none'
   private jobs: Array<() => Promise<void>> = []
   private draining = false
 
@@ -164,17 +165,20 @@ export class CubeViewport {
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.05, 80)
     this.root = new THREE.Group()
+    this.orbitRig = new THREE.Group()
     this.cubeRoot = new THREE.Group()
     this.scene.add(this.root)
-    this.root.add(this.cubeRoot)
+    this.root.add(this.orbitRig)
+    this.orbitRig.add(this.cubeRoot)
 
-    const ambient = new THREE.AmbientLight(0xfafafa, 0.72)
+    // Pure white lights so sticker hexes stay saturated (a warm key muddies them).
+    const ambient = new THREE.AmbientLight(0xffffff, 0.78)
     this.scene.add(ambient)
-    const key = new THREE.DirectionalLight(0xfffbf5, 0.78)
-    key.position.set(0.4, 1.2, 0.15)
+    const key = new THREE.DirectionalLight(0xffffff, 1.45)
+    key.position.set(0.55, 1.25, 0.65)
     this.camera.add(key)
-    const fill = new THREE.DirectionalLight(0xebf2ff, 0.38)
-    fill.position.set(-1.4, -0.4, 0.2)
+    const fill = new THREE.DirectionalLight(0xffffff, 0.28)
+    fill.position.set(-1.1, 0.15, 0.55)
     this.camera.add(fill)
     this.scene.add(this.camera)
 
@@ -196,22 +200,25 @@ export class CubeViewport {
   private plasticMat() {
     return new THREE.MeshPhysicalMaterial({
       color: COLORS.body,
-      roughness: 0.36,
-      metalness: 0.02,
-      clearcoat: 0.42,
-      clearcoatRoughness: 0.38,
-      specularIntensity: 0.16,
+      roughness: 0.45,
+      metalness: 0,
+      clearcoat: 0.2,
+      clearcoatRoughness: 0.42,
+      specularIntensity: 0.1,
     })
   }
 
   private stickerMat(face: Face) {
+    const color = faceColor(face)
     return new THREE.MeshPhysicalMaterial({
-      color: faceColor(face),
-      roughness: 0.32,
+      color,
+      emissive: color.clone(),
+      emissiveIntensity: 0.18,
+      roughness: 0.36,
       metalness: 0,
-      clearcoat: 0.3,
-      clearcoatRoughness: 0.34,
-      specularIntensity: 0.14,
+      clearcoat: 0.04,
+      clearcoatRoughness: 0.6,
+      specularIntensity: 0.03,
       side: THREE.FrontSide,
     })
   }
@@ -268,6 +275,7 @@ export class CubeViewport {
   }
   setPracticeEnabled(on: boolean) {
     this.practiceOrbit = on
+    if (!on) this.orbitRig.quaternion.identity()
   }
   setRepeatMarksSuppressed(suppressed: boolean) {
     this.suppressMarks = suppressed
@@ -391,6 +399,7 @@ export class CubeViewport {
     const rest = restYawPitch()
     this.camYaw = rest.yaw
     this.camPitch = rest.pitch
+    this.orbitRig.quaternion.identity()
     this.placeCamera()
   }
 
@@ -415,32 +424,63 @@ export class CubeViewport {
 
   private bindInput() {
     const el = this.canvas
-    const down = (x: number, y: number) => {
-      if (!this.practiceOrbit || this.animating) return
-      this.dragging = true
-      this.lastX = x
-      this.lastY = y
+    const centroid = () => {
+      let x = 0
+      let y = 0
+      for (const p of this.pointers.values()) {
+        x += p.x
+        y += p.y
+      }
+      const n = this.pointers.size || 1
+      return { x: x / n, y: y / n }
     }
-    const move = (x: number, y: number) => {
-      if (!this.dragging) return
-      const dx = x - this.lastX
-      const dy = y - this.lastY
-      this.lastX = x
-      this.lastY = y
-      this.camYaw -= dx * 0.008
-      this.camPitch = Math.max(-0.2, Math.min(1.2, this.camPitch - dy * 0.008))
-      this.placeCamera()
-    }
-    const up = () => {
-      this.dragging = false
+    // Quaternion tumble: no pitch clamp, so a drag can spin the cube through
+    // a full 360°. Two fingers keep the earlier free-yaw (spin around Y only).
+    const applyOrbit = (dx: number, dy: number, yawOnly: boolean) => {
+      // Match the old camera orbit: drag right brings the right face forward,
+      // drag down tips the bottom toward the camera. No pitch clamp, so either
+      // gesture can continue through a full 360°.
+      const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * 0.01)
+      this.orbitRig.quaternion.premultiply(yawQ)
+      if (yawOnly) return
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion)
+      const pitchQ = new THREE.Quaternion().setFromAxisAngle(right, -dy * 0.01)
+      this.orbitRig.quaternion.premultiply(pitchQ)
     }
     el.addEventListener('pointerdown', (e) => {
-      el.setPointerCapture(e.pointerId)
-      down(e.clientX, e.clientY)
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      try {
+        el.setPointerCapture(e.pointerId)
+      } catch {
+        /* pointer already captured */
+      }
+      this.lastCentroid = centroid()
+      if (!this.practiceOrbit || this.animating) {
+        this.orbitGesture = 'none'
+        return
+      }
+      this.orbitGesture = this.pointers.size >= 2 ? 'yaw' : 'orbit'
     })
-    el.addEventListener('pointermove', (e) => move(e.clientX, e.clientY))
-    el.addEventListener('pointerup', up)
-    el.addEventListener('pointercancel', up)
+    el.addEventListener('pointermove', (e) => {
+      if (!this.pointers.has(e.pointerId)) return
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      const next = centroid()
+      const dx = next.x - this.lastCentroid.x
+      const dy = next.y - this.lastCentroid.y
+      this.lastCentroid = next
+      if (!this.practiceOrbit || this.animating || this.orbitGesture === 'none') return
+      applyOrbit(dx, dy, this.pointers.size >= 2 || this.orbitGesture === 'yaw')
+    })
+    const end = (e: PointerEvent) => {
+      this.pointers.delete(e.pointerId)
+      if (this.pointers.size === 0) this.orbitGesture = 'none'
+      else if (this.practiceOrbit && !this.animating) {
+        this.orbitGesture = this.pointers.size >= 2 ? 'yaw' : 'orbit'
+        this.lastCentroid = centroid()
+      }
+    }
+    el.addEventListener('pointerup', end)
+    el.addEventListener('pointercancel', end)
     window.addEventListener('resize', () => this.resize())
   }
 
@@ -920,20 +960,28 @@ export class CubeViewport {
     const my = this.token.n
     const saved = this.cubeRoot.quaternion.clone()
     const savedYaw = this.model.yaw
-    const right = new THREE.Vector3().crossVectors(
-      new THREE.Vector3(0, 1, 0),
-      REST.clone().setY(0).normalize(),
-    ).normalize()
-    // tip toward camera
-    const tip = new THREE.Quaternion().setFromAxisAngle(right, 1.15)
-    const base = this.orientationQuat(savedYaw, this.model.flipped)
-    const tipped = tip.clone().multiply(base)
-    await this.slerpTo(tipped, this.teachMs(0.62), my)
+    const savedFlip = this.model.flipped
+    // Spin the cube so the bottom face (local -Y) points at the camera.
+    // The old +1.15 tip rotated the top toward Tony instead.
+    const bottomWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(saved).normalize()
+    const camDir = this.camera.position.clone().normalize()
+    let align = new THREE.Quaternion().setFromUnitVectors(bottomWorld, camDir)
+    if (bottomWorld.dot(camDir) > 0.82) {
+      const axis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camDir)
+      if (axis.lengthSq() < 1e-6) axis.set(1, 0, 0)
+      align.setFromAxisAngle(axis.normalize(), Math.PI * 0.72)
+    }
+    const tipped = align.clone().multiply(saved)
+    await this.slerpTo(tipped, Math.max(520, this.teachMs(0.55)), my)
     if (this.token.n !== my) return
-    const hold = Math.max(350, 1000 * SPEED_FACTOR[this.teachSpeed])
+    const hold = Math.max(1000, 1200 * SPEED_FACTOR[this.teachSpeed])
     if (!(await sleep(hold, this.token, my))) return
-    await this.slerpTo(saved, this.teachMs(0.55), my)
+    await this.slerpTo(saved, Math.max(420, this.teachMs(0.45)), my)
+    if (this.token.n !== my) return
     this.model.yaw = savedYaw
+    this.model.flipped = savedFlip
+    this.cubeYawQuarters = savedYaw
+    this.cubeFlipped = savedFlip
     this.applyOrientationInstant()
   }
 
@@ -985,6 +1033,60 @@ export class CubeViewport {
       this.cubeRoot.remove(this.arrowNode)
       this.arrowNode = null
     }
+  }
+
+  /**
+   * Thin insert arrow bowed toward `facing` (the face squared to the camera)
+   * so the shaft and head read face-on, not edge-on.
+   */
+  narrowArrow(from: Vec3, to: Vec3, facing: Vec3) {
+    this.hideGuideArrow()
+    const g = new THREE.Group()
+    const mat = new THREE.MeshBasicMaterial({
+      color: COLORS.purple,
+      depthTest: false,
+      depthWrite: false,
+    })
+    const face = new THREE.Vector3(facing.x, facing.y, facing.z)
+    if (face.lengthSq() < 1e-6) face.set(0, 0, 1)
+    face.normalize()
+    const lift = (p: THREE.Vector3) => {
+      const radial = p.clone()
+      if (radial.lengthSq() < 1e-4) radial.copy(face)
+      else radial.normalize()
+      return p.clone().add(radial.multiplyScalar(0.38)).add(face.clone().multiplyScalar(0.22))
+    }
+    const start = lift(new THREE.Vector3(from.x, from.y, from.z))
+    let end = lift(new THREE.Vector3(to.x, to.y, to.z))
+    if (start.distanceTo(end) < 0.35) {
+      const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), face)
+      if (side.lengthSq() < 1e-6) side.set(1, 0, 0)
+      end = start.clone().add(side.normalize().multiplyScalar(1.15))
+    }
+    const mid = start.clone().add(end).multiplyScalar(0.5)
+    mid.add(face.clone().multiplyScalar(0.85))
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end)
+    const pts = curve.getPoints(18)
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]
+      const b = pts[i + 1]
+      const dir = b.clone().sub(a)
+      const len = dir.length()
+      if (len < 0.01) continue
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, len, 6), mat)
+      cyl.position.copy(a).add(b).multiplyScalar(0.5)
+      cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize())
+      cyl.renderOrder = 8
+      g.add(cyl)
+    }
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.18, 8), mat)
+    cone.position.copy(end)
+    const tipDir = end.clone().sub(pts[pts.length - 2] ?? mid).normalize()
+    cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tipDir)
+    cone.renderOrder = 8
+    g.add(cone)
+    this.cubeRoot.add(g)
+    this.arrowNode = g
   }
 
   showRepeatMark(near: Vec3) {

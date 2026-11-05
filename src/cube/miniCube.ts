@@ -60,22 +60,25 @@ function roundedSticker(size: number, radius: number): THREE.ShapeGeometry {
 function plasticMat() {
   return new THREE.MeshPhysicalMaterial({
     color: COLORS.body,
-    roughness: 0.36,
-    metalness: 0.02,
-    clearcoat: 0.42,
-    clearcoatRoughness: 0.38,
-    specularIntensity: 0.16,
+    roughness: 0.45,
+    metalness: 0,
+    clearcoat: 0.2,
+    clearcoatRoughness: 0.42,
+    specularIntensity: 0.1,
   })
 }
 
 function stickerMat(hex: string) {
+  const color = new THREE.Color(hex)
   return new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(hex),
-    roughness: 0.32,
+    color,
+    emissive: color.clone(),
+    emissiveIntensity: 0.18,
+    roughness: 0.36,
     metalness: 0,
-    clearcoat: 0.3,
-    clearcoatRoughness: 0.34,
-    specularIntensity: 0.14,
+    clearcoat: 0.04,
+    clearcoatRoughness: 0.6,
+    specularIntensity: 0.03,
     side: THREE.FrontSide,
   })
 }
@@ -193,9 +196,9 @@ export class MiniTeachingCube {
     this.camera = new THREE.PerspectiveCamera(32, 1, 0.05, 40)
     this.scene.add(this.root)
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.85)
+    const ambient = new THREE.AmbientLight(0xffffff, 0.72)
     this.scene.add(ambient)
-    const key = new THREE.DirectionalLight(0xfffbf5, 0.55)
+    const key = new THREE.DirectionalLight(0xffffff, 1.15)
     key.position.set(0.6, 1.4, 0.2)
     this.camera.add(key)
     this.scene.add(this.camera)

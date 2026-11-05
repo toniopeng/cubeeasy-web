@@ -52,6 +52,7 @@ import {
   ufrSlot,
   whiteDir,
   yawFor,
+  yawFront,
   yawRight,
   yellowAlignMoves,
   yellowDir,
@@ -97,6 +98,8 @@ export type CoachSnapshot = {
   practiceOrbit: boolean
   inputLocked: boolean
   caption: string
+  /** True while a formula/alg is on screen or its moves are turning. */
+  algActing: boolean
   celebrating: boolean
   cheer: Cheer
   cheerID: number
@@ -136,6 +139,7 @@ export class LessonCoach {
   private persistCornerMarks = false
   inputLocked = false
   caption = ''
+  algActing = false
   celebrating = false
   cheer: Cheer = 'none'
   cheerID = 0
@@ -180,6 +184,7 @@ export class LessonCoach {
       practiceOrbit: this.practiceOrbit,
       inputLocked: this.inputLocked,
       caption: this.caption,
+      algActing: this.algActing,
       celebrating: this.celebrating,
       cheer: this.cheer,
       cheerID: this.cheerID,
@@ -239,6 +244,7 @@ export class LessonCoach {
     this.persistCornerMarks = false
     this.celebrating = false
     this.cheer = 'none'
+    this.algActing = false
     this.emit()
   }
 
@@ -276,8 +282,13 @@ export class LessonCoach {
     this.stopGuidance(false)
     this.step = 0
     this.caption = ''
-    this.practiceOrbit = false
-    this.scene.setPracticeEnabled(false)
+    this.algActing = false
+    // Free 360° orbit the moment Reset is pressed — do not lock the camera
+    // for the scramble flourish or after it lands.
+    this.practiceOrbit = true
+    this.scene.setPracticeEnabled(true)
+    this.padUnlocked = false
+    this.scene.setPadEnabled(false)
     this.emit()
     const my = this.token
     void (async () => {
@@ -510,14 +521,40 @@ export class LessonCoach {
   }
 
   // —— Playback ——
+  /** Drop on-cube words (orange / next / bottom) the moment a formula is shown or acted. */
+  private cancelWordLabels() {
+    if (!this.caption) return
+    this.caption = ''
+    this.emit()
+  }
+
+  private async playMoves(moves: Move[], viewRelative: boolean) {
+    if (!moves.length) return
+    this.cancelWordLabels()
+    const inherited = this.algActing
+    this.algActing = true
+    this.emit()
+    try {
+      await this.scene.play(moves, viewRelative, true)
+    } finally {
+      if (!inherited) {
+        this.algActing = false
+        this.emit()
+      }
+    }
+  }
+
   private async oneCycle(moves: Move[], token: number, returnHome = true) {
     if (!moves.length) return this.token === token
+    this.cancelWordLabels()
     this.inputLocked = true
     await this.scene.settleMainAngle()
     if (this.token !== token) return false
     this.grayBefore(moves)
     this.advance = 'play'
+    this.cancelWordLabels()
     this.playFace = moves.length > 1 ? { kind: 'formula', moves, active: 0 } : { kind: 'play' }
+    this.algActing = moves.length > 1
     this.inputLocked = false
     this.emit()
     await this.wait()
@@ -525,18 +562,27 @@ export class LessonCoach {
     this.scene.hideRepeatMark()
     this.scene.hideGuideArrow()
     this.inputLocked = true
+    this.cancelWordLabels()
     this.emit()
     for (let index = 0; index < moves.length; index++) {
       if (this.token !== token) return false
       this.advance = 'play'
-      if (moves.length > 1) this.playFace = { kind: 'formula', moves, active: index }
+      if (moves.length > 1) {
+        this.cancelWordLabels()
+        this.playFace = { kind: 'formula', moves, active: index }
+        this.algActing = true
+      }
       this.emit()
-      await this.scene.play([moves[index]], true, true)
+      await this.playMoves([moves[index]], true)
       if (this.token !== token) return false
       this.scene.reapplyTeachingColors()
     }
+    this.algActing = false
+    this.playFace = { kind: 'play' }
     if (this.step === 7 && movesEqual(moves, [...ALGS.twist])) this.scene.restoreColors()
     if (this.persistCornerMarks) this.refreshCornerStage()
+    this.inputLocked = false
+    this.emit()
     if (returnHome) return this.returnToMainAngle(token)
     await this.scene.settleMainAngle()
     return this.token === token
@@ -596,12 +642,20 @@ export class LessonCoach {
     } else if (guides && guideFrom && guideTo) {
       if (moves[0]) {
         this.advance = { move: moves[0] }
+        this.cancelWordLabels()
         this.playFace = { kind: 'formula', moves, active: 0 }
+        this.algActing = true
         this.emit()
       }
-      this.inputLocked = true
-      this.emit()
-      if (!(await this.pointAndHold(guideFrom, guideTo, token, firstFormula))) return false
+      if (firstFormula) {
+        // Highlight just ended. The guide can draw while Play is already live —
+        // the old point-and-hold locked the button for about two extra seconds.
+        void this.scene.guideArrow(guideFrom, guideTo, true)
+      } else {
+        this.inputLocked = true
+        this.emit()
+        if (!(await this.pointAndHold(guideFrom, guideTo, token, false))) return false
+      }
     }
     return this.oneCycle(moves, token, returnHome)
   }
@@ -658,14 +712,14 @@ export class LessonCoach {
     this.playFace = { kind: 'play' }
     this.advance = 'whiteCross'
     this.emit()
-    await this.scene.play(moves, true, true)
+    await this.playMoves(moves, true)
   }
 
   private async playAuto(moves: Move[], viewRelative: boolean) {
     if (!moves.length) return
     this.inputLocked = true
     this.emit()
-    await this.scene.play(moves, viewRelative, true)
+    await this.playMoves(moves, viewRelative)
   }
 
   private async playLesson(moves: Move[], viewRelative: boolean) {
@@ -680,7 +734,7 @@ export class LessonCoach {
       if (this.token !== token) return
       this.inputLocked = true
       this.emit()
-      await this.scene.play([move], viewRelative, true)
+      await this.playMoves([move], viewRelative)
       if (this.persistCornerMarks) this.refreshCornerStage()
     }
   }
@@ -1120,19 +1174,28 @@ export class LessonCoach {
         )
         if (token !== this.token) return
         const alg = aligned.right ? [...ALGS.middleRight] : [...ALGS.middleLeft]
-        this.caption = ''
+        this.cancelWordLabels()
         const from = pieceHome(this.model, top)?.pos ?? top
         if (alg[0]) {
           this.advance = { move: alg[0] }
           this.playFace = { kind: 'formula', moves: alg, active: 0 }
+          this.algActing = true
           this.emit()
         }
         this.inputLocked = true
         this.emit()
-        if (!(await this.pointAndHold(from, top, token))) return
-        await this.scene.settleMainAngle()
-        await this.scene.animateYaw(aligned.yaw)
-        if (token !== this.token) return
+        // Highlight finished. Square the insert to the camera so the narrow
+        // arrow and the pieces being solved are face-on, not on the side.
+        if (
+          !(await this.presentMiddleArrow(
+            token,
+            aligned.yaw,
+            from,
+            top,
+            FACE_NORMAL[aligned.side],
+          ))
+        )
+          return
         this.showStep3(top)
         if (
           !(await this.playUntil(
@@ -1185,10 +1248,12 @@ export class LessonCoach {
           this.emit()
         }
         const shown = pieceHome(this.model, stuck)?.pos ?? pos
-        if (!(await this.pointAndHold(shown, stuck, token))) return
-        await this.scene.settleMainAngle()
-        await this.scene.animateYaw(yawFor(pos.x, pos.z))
-        if (token !== this.token) return
+        const facing = this.middleFaceNormal(shown)
+        const faceYaw = yawFront(facing)
+        const right = this.viewRight(faceYaw)
+        const arrowTo = v3(shown.x + right.x * 1.2, shown.y, shown.z + right.z * 1.2)
+        if (!(await this.presentMiddleArrow(token, faceYaw, shown, arrowTo, facing))) return
+        this.showStep3(stuck)
         if (
           !(await this.playUntil(
             token,
@@ -1233,6 +1298,40 @@ export class LessonCoach {
         { home, face },
         { home: FACE_NORMAL[face], face },
       ])
+  }
+
+  /**
+   * After the middle-layer highlight, yaw the insert face toward the camera
+   * and draw the thin "to the right / left" arrow in that view.
+   */
+  private async presentMiddleArrow(
+    token: number,
+    yaw: number,
+    from: Vec3,
+    to: Vec3,
+    facing: Vec3,
+  ) {
+    await this.scene.settleMainAngle()
+    if (this.token !== token) return false
+    await this.scene.animateYaw(yaw)
+    if (this.token !== token) return false
+    this.scene.narrowArrow(from, to, facing)
+    return this.token === token
+  }
+
+  /** Face of a middle edge that we square to the camera. */
+  private middleFaceNormal(pos: Vec3): Vec3 {
+    if (pos.z !== 0) return v3(0, 0, pos.z > 0 ? 1 : -1)
+    if (pos.x !== 0) return v3(pos.x > 0 ? 1 : -1, 0, 0)
+    return v3(0, 0, 1)
+  }
+
+  /** Model-space direction that becomes view-right (+X) after `yaw` quarter-turns. */
+  private viewRight(yaw: number): Vec3 {
+    let v = v3(1, 0, 0)
+    const turns = ((yaw % 4) + 4) % 4
+    for (let i = 0; i < turns; i++) v = v3(-v.z, v.y, v.x)
+    return v
   }
 
   private yawShowingCue(from: Vec3, _to: Vec3, _faces: Face[]): number {

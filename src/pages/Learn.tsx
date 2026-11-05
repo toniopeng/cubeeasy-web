@@ -4,7 +4,7 @@ import { Paywall } from '../components/Paywall'
 import { FormulasSheet } from '../components/FormulasSheet'
 import { COLORS, type Face, type Move, moveNotation, parseMoves } from '../cube/model'
 import { CubeViewport } from '../cube/viewport'
-import { LessonCoach, type CoachSnapshot, type MiddleSlide } from '../lesson/coach'
+import { LessonCoach, type Cheer, type CoachSnapshot, type MiddleSlide } from '../lesson/coach'
 import {
   FormulaIcon,
   LayerGlyph,
@@ -32,6 +32,54 @@ function chipInk(face: Face) {
   return face === 'L' || face === 'B' ? '#fff' : COLORS.ink
 }
 
+const CHEER_COLORS = [COLORS.U, COLORS.D, COLORS.F, COLORS.R, COLORS.L, COLORS.B]
+
+function CheerBurst({ kind, id }: { kind: Exclude<Cheer, 'none'>; id: number }) {
+  const count = kind === 'solved' ? 70 : kind === 'step' ? 46 : 30
+  const pieces = Array.from({ length: count }, (_, i) => {
+    const left = (i * 47 + id * 13) % 100
+    const delay = ((i * 17) % 28) / 100
+    const dur = (kind === 'solved' ? 1.7 : kind === 'step' ? 1.45 : 1.2) + ((i * 13) % 12) / 25
+    const rot = ((i * 53) % 360) - 180
+    const drift = ((i * 17 + id) % 21) - 10
+    const size = (kind === 'piece' ? 7 : 8) + (i % 5)
+    return {
+      left,
+      delay,
+      dur,
+      rot,
+      drift: drift * (kind === 'solved' ? 14 : 10),
+      color: CHEER_COLORS[i % CHEER_COLORS.length],
+      round: i % 3 === 0,
+      size,
+    }
+  })
+  return (
+    <div className={`cheer cheer-${kind}`} aria-hidden>
+      <span className="popper popper-l">🎉</span>
+      <span className="popper popper-r">🎉</span>
+      {kind !== 'piece' && <span className="popper popper-c">🎉</span>}
+      {pieces.map((p, i) => (
+        <span
+          key={`${id}-${i}`}
+          className="confetti"
+          style={{
+            left: `${p.left}%`,
+            background: p.color,
+            width: p.size,
+            height: p.round ? p.size : Math.round(p.size * 1.7),
+            borderRadius: p.round ? 999 : 2,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.dur}s`,
+            ['--drift' as string]: `${p.drift}px`,
+            ['--rot' as string]: `${p.rot}deg`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 const IDLE: CoachSnapshot = {
   step: 0,
   playFace: { kind: 'play' },
@@ -47,6 +95,7 @@ const IDLE: CoachSnapshot = {
   practiceOrbit: true,
   inputLocked: false,
   caption: '',
+  algActing: false,
   celebrating: false,
   cheer: 'none',
   cheerID: 0,
@@ -174,7 +223,9 @@ export function Learn() {
       <div className="lesson-col">
         <div className="viewport-wrap">
           <canvas ref={canvasRef} className="cube-canvas" />
-          {snap.cheer !== 'none' && <div className={`cheer cheer-${snap.cheer}`} aria-hidden />}
+          {snap.cheer !== 'none' && (
+            <CheerBurst key={snap.cheerID} kind={snap.cheer} id={snap.cheerID} />
+          )}
           {minimapStep > 0 && (
             <div className="overlay-tl">
               <StepPreviewMini step={minimapStep} side={92} />
@@ -221,7 +272,9 @@ export function Learn() {
               <FormulaIcon />
             </button>
           </div>
-          {snap.caption ? <div className="caption-pill">{snap.caption}</div> : null}
+          {snap.caption && snap.playFace.kind !== 'formula' && !snap.algActing ? (
+            <div className="caption-pill">{snap.caption}</div>
+          ) : null}
         </div>
 
         <div className="advance-block">

@@ -227,7 +227,7 @@ export function PlaceCornersPattern({ side = 50.4 }: { side?: number }) {
       }
       const unit = side / 63
       // Ghost full triangle cycle so a screenshot never reads as a lone diagonal.
-      ctx.strokeStyle = 'rgba(139, 85, 213, 0.28)'
+      ctx.strokeStyle = 'rgba(122, 34, 245, 0.28)'
       ctx.lineWidth = 2.2 * unit
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
@@ -379,9 +379,9 @@ export function FormulaIcon() {
       <img src={`${import.meta.env.BASE_URL}formulas-scramble.png`} alt="" width={28} height={32} />
       <div className="formula-bars">
         {/* iOS FormulaIcon accent bars: blue, red, yellow */}
-        <span style={{ background: '#1a40c2', width: 14 }} />
-        <span style={{ background: '#c01a16', width: 11 }} />
-        <span style={{ background: '#fff200', width: 8 }} />
+        <span style={{ background: COLORS.B, width: 14 }} />
+        <span style={{ background: COLORS.L, width: 11 }} />
+        <span style={{ background: COLORS.U, width: 8 }} />
       </div>
     </div>
   )
