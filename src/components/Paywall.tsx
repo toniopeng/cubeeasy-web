@@ -48,7 +48,7 @@ export function Paywall({ open, onClose, onUnlocked, allowSimulate = false }: Pr
           </button>
         </div>
         <p className="paywall-body">
-          Two free runs are done. Unlock the course of life. One purchase, no subscription, no ads.
+          Your free course is finished. Unlock the course of life. One purchase, no subscription, no ads.
         </p>
         <button className="paywall-unlock" disabled={busy} onClick={checkout}>
           {busy ? '…' : `Unlock · ${LIFETIME_PRICE_LABEL}`}

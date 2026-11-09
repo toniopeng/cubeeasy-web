@@ -1,6 +1,6 @@
 # CubeEasy Web
 
-One-page beginner 3×3 tutor matched to the iOS LessonScreen (teaching-v51): studio background, three.js cube, Play formula cycles, move pad, Speed, Formulas sheet, layer jumps, Lifetime **$9.99** (2 free course starts).
+One-page beginner 3×3 tutor matched to the iOS LessonScreen (teaching-v51): studio background, three.js cube, Play formula cycles, move pad, Speed, Formulas sheet, layer jumps, Lifetime **$9.99** (one finished free course).
 
 ## Local
 

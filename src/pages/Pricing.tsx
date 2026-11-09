@@ -20,7 +20,7 @@ export function Pricing() {
       <p className="muted">Pricing</p>
       <h1>Lifetime unlock</h1>
       <p>
-        {FREE_RUNS} full course runs free. Then one payment — no subscription.
+        {FREE_RUNS} finished course free. Then one payment — no subscription.
       </p>
       <p style={{ fontSize: '2rem', fontWeight: 800, margin: '0.5rem 0' }}>{LIFETIME_PRICE_LABEL}</p>
       <p className="muted">USD · one-time via Paddle</p>

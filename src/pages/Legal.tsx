@@ -35,18 +35,19 @@ export function Privacy() {
       <h2>What stays on this device</h2>
       <p>You do not need an account.</p>
       <p>
-        Free course runs, and a Lifetime unlock if you have one on this browser, are saved
+        The free course, and a Lifetime unlock if you have one on this browser, are saved
         only in this browser’s <code>localStorage</code> under the key <code>cubeeasy.web.v2</code>.
-        If an older key, <code>cubeeasy.web.v1</code>, is still present, the site reads it once
-        and copies the count into the current key. That information stays on your device. CubeEasy
-        does not run an account server for the tutor.
+        The free course counts when you finish it, not when you start or press Reset. If an older
+        key, <code>cubeeasy.web.v1</code>, is still present, the site reads it once. That
+        information stays on your device. CubeEasy does not run an account server, and a private
+        window or another browser is a separate copy. We cannot tell that it is the same person.
       </p>
 
       <h2>How to clear it</h2>
       <p>
         In your browser settings, clear site data for cubeeasy.app. You can also delete the
         keys <code>cubeeasy.web.v2</code> and <code>cubeeasy.web.v1</code>. Clearing site data
-        removes the free-run count and any Lifetime flag stored on that browser. It does not
+        removes the free-course record and any Lifetime flag stored on that browser. It does not
         cancel a payment. Keep the Paddle receipt if you later need the unlock on this device.
       </p>
 
@@ -137,15 +138,15 @@ export function Terms() {
 
       <h2>Free runs</h2>
       <p>
-        Two full course runs are free in a browser. No account is required. The count is stored
-        only in that browser under the <code>localStorage</code> key <code>cubeeasy.web.v2</code>.
-        Another browser, a private window, or cleared site data starts from the free allowance
-        again. Free runs are not a balance we keep on a server.
+        One full course is free in a browser. No account is required. It counts when you finish
+        that course, not when you start it or press Reset. The record is stored only in that
+        browser under the <code>localStorage</code> key <code>cubeeasy.web.v2</code>. A private
+        window does not share it. Free use is not a balance we keep on a server.
       </p>
 
       <h2>Lifetime</h2>
       <p>
-        After the free runs, Lifetime is a one-time purchase of <strong>US $9.99</strong> for
+        After that free course, Lifetime is a one-time purchase of <strong>US $9.99</strong> for
         this website. It is a digital good: not a physical cube, and not a subscription. There
         are no ads. Lifetime applies to the web tutor on the browser where the purchase is
         honored.
@@ -199,7 +200,7 @@ export function Terms() {
         To the extent the law allows, PENG TAO is not liable for indirect loss, such as lost
         practice time or a contest you entered on your own. If we are liable for something
         directly related to this website, that amount is limited to what you paid for web
-        Lifetime (US $9.99), or nothing if you only used the free runs. This limit does not
+        Lifetime (US $9.99), or nothing if you only used the free course. This limit does not
         apply where the law where you live says it cannot.
       </p>
 

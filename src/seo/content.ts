@@ -1,15 +1,15 @@
 /** Keep the free-run count and price aligned with src/data/course.ts. */
-const FREE_RUNS = 2
+const FREE_RUNS = 1
 const LIFETIME_PRICE_LABEL = '$9.99'
 
 /** Brand-facing title. No puzzle-trademark or speed-timer wording. */
 export const HOME_TITLE = 'CubeEasy — Learn to solve a 3×3 cube'
 export const HOME_DESCRIPTION =
-  'CubeEasy is a beginner tutor for the classic 3×3 cube. Learn the 7-step layer method with Play and formulas. Two free runs, then a one-time Lifetime unlock.'
+  'CubeEasy is a beginner tutor for the classic 3×3 cube. Learn the 7-step layer method with Play and formulas. One finished course is free, then a one-time Lifetime unlock.'
 
 export const GUIDE_TITLE = '7-step beginner method — CubeEasy'
 export const GUIDE_DESCRIPTION =
-  'How CubeEasy teaches a first 3×3 solve: white cross, bottom corners, middle layer, yellow cross, edges, corners, and the final twist. Two free runs, then Lifetime.'
+  'How CubeEasy teaches a first 3×3 solve: white cross, bottom corners, middle layer, yellow cross, edges, corners, and the final twist. One finished course is free, then Lifetime.'
 
 export type Faq = { question: string; answer: string }
 export type StepInfo = { name: string; text: string }
@@ -63,12 +63,12 @@ export const FAQS: Faq[] = [
   },
   {
     question: 'How much does CubeEasy cost?',
-    answer: `${FREE_RUNS} full course runs are free in this browser. After that, Lifetime is a one-time ${LIFETIME_PRICE_LABEL} unlock on the web. There is no subscription. The iOS app is a separate purchase.`,
+    answer: `One full course is free in this browser, and it counts when you finish it. After that, Lifetime is a one-time ${LIFETIME_PRICE_LABEL} unlock on the web. There is no subscription. The iOS app is a separate purchase.`,
   },
   {
     question: 'Do I need an account?',
     answer:
-      'No account is required for the free runs. They are stored in this browser. Lifetime checkout is handled by Paddle, which is the payment merchant.',
+      'No account is required. The free course is stored in this browser and counts when you finish it. A private window does not share that record. Lifetime checkout is handled by Paddle, which is the payment merchant.',
   },
   {
     question: 'Is CubeEasy affiliated with the company that owns the cube trademark?',
@@ -106,13 +106,13 @@ export function pageDescription(path: string): string {
     case '/guide':
       return GUIDE_DESCRIPTION
     case '/pricing':
-      return `CubeEasy Lifetime is ${LIFETIME_PRICE_LABEL} once on the web after ${FREE_RUNS} free course runs. No subscription. The 7-step beginner tutor stays unlocked.`
+      return `CubeEasy Lifetime is ${LIFETIME_PRICE_LABEL} once on the web after one finished free course. No subscription. The 7-step beginner tutor stays unlocked.`
     case '/support':
-      return 'Help for CubeEasy on the web. Email taopeng46@gmail.com. Two free runs stay in this browser. Lifetime is a one-time purchase sold by Paddle.'
+      return 'Help for CubeEasy on the web. Email taopeng46@gmail.com. One finished course is free in this browser. Lifetime is a one-time purchase sold by Paddle.'
     case '/privacy':
       return 'CubeEasy stores free-run progress in this browser only. Cloudflare Web Analytics does not use cookies. Lifetime checkout is sold by Paddle as Merchant of Record.'
     case '/terms':
-      return 'Terms for CubeEasy, an independent 3×3 tutor by PENG TAO. Two free runs, then Lifetime for US $9.99 once via Paddle. Not affiliated with Rubik’s Brand Ltd.'
+      return 'Terms for CubeEasy, an independent 3×3 tutor by PENG TAO. One finished course is free, then Lifetime for US $9.99 once via Paddle. Not affiliated with Rubik’s Brand Ltd.'
     case '/copyright':
       return '© 2026 PENG TAO. Copyright in the CubeEasy website, software, and lesson text. Classic-cube trademarks belong to their owners.'
     default:
@@ -147,7 +147,7 @@ export function buildJsonLd(root: string) {
           '7-step beginner layer method',
           'Play button that coaches each formula',
           'On-cube piece highlights',
-          `${FREE_RUNS} free course runs`,
+          `${FREE_RUNS} finished free course`,
           'One-time Lifetime unlock',
         ],
         offers: [
@@ -155,7 +155,7 @@ export function buildJsonLd(root: string) {
             '@type': 'Offer',
             price: '0',
             priceCurrency: 'USD',
-            description: `${FREE_RUNS} free full course runs in the browser`,
+            description: 'One finished free course in this browser',
             url: root,
           },
           {
@@ -187,7 +187,7 @@ export function buildJsonLd(root: string) {
           '@type': 'Offer',
           price: '0',
           priceCurrency: 'USD',
-          description: `${FREE_RUNS} free course runs, then Lifetime for ${LIFETIME_PRICE_LABEL}`,
+          description: `One finished free course, then Lifetime for ${LIFETIME_PRICE_LABEL}`,
           url: url('/pricing'),
         },
       },

@@ -10,9 +10,9 @@ export function Support() {
       <p className="muted">Support</p>
       <h1>We’re here to help</h1>
       <p>
-        CubeEasy on the web is a beginner tutor for a classic 3×3 cube. Two full course runs
-        are free in this browser. Lifetime is a one-time unlock of US $9.99, with no
-        subscription and no ads.
+        CubeEasy on the web is a beginner tutor for a classic 3×3 cube. One full course is
+        free in this browser, and it counts when you finish it. Lifetime is a one-time unlock
+        of US $9.99, with no subscription and no ads.
       </p>
 
       <h2>Email</h2>
@@ -36,12 +36,13 @@ export function Support() {
         . Write to us if you need help finding that request.
       </p>
 
-      <h2>Free runs</h2>
+      <h2>Free course</h2>
       <p>
-        The two free course runs are stored only in this browser, in{' '}
-        <code>localStorage</code> under <code>cubeeasy.web.v2</code>. No account is required.
-        To start the count over, clear site data for cubeeasy.app. That also removes a
-        Lifetime flag saved only on this device, so keep your Paddle receipt.
+        One finished course is stored only in this browser, in <code>localStorage</code> under{' '}
+        <code>cubeeasy.web.v2</code>. Starting or Reset does not use it up. No account is
+        required. A private window or cleared site data is a new copy of that record, because
+        the site has no sign-in. Clearing site data also removes a Lifetime flag saved only on
+        this device, so keep your Paddle receipt.
       </p>
 
       <h2>iOS app</h2>

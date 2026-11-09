@@ -14,9 +14,8 @@ import {
   YellowPatternRow,
 } from '../lesson/patterns'
 import {
-  abandonRun,
-  beginRun,
-  finishRun,
+  canStartCourse,
+  completeFreeCourse,
   loadEntitlement,
   unlockLifetime,
   type EntitlementState,
@@ -162,28 +161,32 @@ export function Learn() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Course finish when celebrating solved after step 7
+  const paywallForFinish = useRef(false)
+
+  // The free course is used up only when the coached solve finishes.
   useEffect(() => {
-    if (snap.celebrating && snap.step === 0) {
-      setEnt((e) => finishRun(e))
-    }
+    if (!(snap.celebrating && snap.step === 0)) return
+    setEnt((e) => {
+      if (e.isLifetime || e.completedRuns >= 1) return e
+      paywallForFinish.current = true
+      return completeFreeCourse(e)
+    })
   }, [snap.celebrating, snap.step])
+
+  useEffect(() => {
+    if (!paywallForFinish.current) return
+    if (ent.isLifetime || ent.completedRuns < 1) return
+    paywallForFinish.current = false
+    setShowPaywall(true)
+  }, [ent.completedRuns, ent.isLifetime])
 
   function begin(target: number) {
     const coach = coachRef.current
     if (!coach) return
-    const restart = target === 1 && snap.step > 1
-    const newRun = !ent.runInProgress || restart
-    if (!ent.isLifetime && newRun && ent.startedRuns >= 2) {
+    if (!canStartCourse(ent)) {
       setPendingStep(target)
       setShowPaywall(true)
       return
-    }
-    let nextEnt = ent
-    if (!ent.isLifetime && newRun) {
-      if (restart) nextEnt = abandonRun(ent)
-      nextEnt = beginRun(nextEnt)
-      setEnt(nextEnt)
     }
     setPendingStep(null)
     coach.start(target)
