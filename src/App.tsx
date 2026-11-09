@@ -1,9 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
+import { Guide } from './pages/Guide'
 import { Learn } from './pages/Learn'
 import { Pricing } from './pages/Pricing'
 import { Support } from './pages/Support'
-import { Privacy, Terms } from './pages/Legal'
+import { Copyright, Privacy, Terms } from './pages/Legal'
 
 export default function App() {
   return (
@@ -11,10 +12,12 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Learn />} />
         <Route path="learn" element={<Navigate to="/" replace />} />
+        <Route path="guide" element={<Guide />} />
         <Route path="pricing" element={<Pricing />} />
         <Route path="support" element={<Support />} />
         <Route path="privacy" element={<Privacy />} />
         <Route path="terms" element={<Terms />} />
+        <Route path="copyright" element={<Copyright />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

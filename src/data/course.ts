@@ -1,6 +1,6 @@
 import { ALGS, moveNotation } from '../cube/model'
 
-export const FREE_RUNS = 2
+export const FREE_RUNS = 1
 export const LIFETIME_PRICE_LABEL = '$9.99'
 export const PRODUCT_NAME = 'CubeEasy Lifetime'
 

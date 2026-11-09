@@ -2,14 +2,42 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="CubeEasy — learn to solve a 3×3 cube in 7 clear steps. Two free course runs, then Lifetime unlock." />
+    <title>__PAGE_TITLE__</title>
+    <meta name="description" content="__PAGE_DESC__" />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <link rel="canonical" href="__SITE_ROOT__" />
+    <link rel="alternate" hreflang="en" href="__SITE_ROOT__" />
+    <link rel="alternate" hreflang="x-default" href="__SITE_ROOT__" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CubeEasy" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="__PAGE_TITLE__" />
+    <meta property="og:description" content="__PAGE_DESC__" />
+    <meta property="og:url" content="__SITE_ROOT__" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="__PAGE_TITLE__" />
+    <meta name="twitter:description" content="__PAGE_DESC__" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#5e636b" />
-    <title>CubeEasy — Learn to solve a 3×3</title>
+    <script type="application/ld+json">__JSON_LD__</script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <style>
+        body { overflow: auto; height: auto; background: #fff; color: #1b1d22; }
+        article { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; line-height: 1.5; }
+      </style>
+      __NOSCRIPT_HTML__
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if (location.hostname.endsWith('github.io')) {
+        var path = location.pathname.replace(/^\/cubeeasy-web/, '') || '/'
+        location.replace('https://cubeeasy.app' + path + location.search + location.hash)
+      }
+    </script>
+    <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "ce2851f4b2fb4def81b5e7b709608c8e"}'></script><!-- End Cloudflare Web Analytics -->
   </body>
 </html>

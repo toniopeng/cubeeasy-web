@@ -23,7 +23,6 @@ import {
   bestMatchCount,
   bestUCount,
   cloneState,
-  colorName,
   cornerPlaced,
   cornerPrep,
   cornerSolved,
@@ -51,6 +50,7 @@ import {
   uMovesUntilTwistedAtUFR,
   ufrSlot,
   whiteDir,
+  bestVisibleYaw,
   yawFor,
   yawRight,
   yellowAlignMoves,
@@ -97,6 +97,8 @@ export type CoachSnapshot = {
   practiceOrbit: boolean
   inputLocked: boolean
   caption: string
+  /** True while a formula/alg is on screen or its moves are turning. */
+  algActing: boolean
   celebrating: boolean
   cheer: Cheer
   cheerID: number
@@ -136,6 +138,7 @@ export class LessonCoach {
   private persistCornerMarks = false
   inputLocked = false
   caption = ''
+  algActing = false
   celebrating = false
   cheer: Cheer = 'none'
   cheerID = 0
@@ -180,6 +183,7 @@ export class LessonCoach {
       practiceOrbit: this.practiceOrbit,
       inputLocked: this.inputLocked,
       caption: this.caption,
+      algActing: this.algActing,
       celebrating: this.celebrating,
       cheer: this.cheer,
       cheerID: this.cheerID,
@@ -196,6 +200,8 @@ export class LessonCoach {
 
   start(step: number) {
     this.stopGuidance()
+    // Drop any Reset-spin or cue zoom so Play / layer jumps use the normal lesson frame.
+    this.scene.resetTeachingFrame()
     this.step = step
     this.practiceOrbit = false
     this.padUnlocked = false
@@ -239,6 +245,7 @@ export class LessonCoach {
     this.persistCornerMarks = false
     this.celebrating = false
     this.cheer = 'none'
+    this.algActing = false
     this.emit()
   }
 
@@ -276,8 +283,13 @@ export class LessonCoach {
     this.stopGuidance(false)
     this.step = 0
     this.caption = ''
-    this.practiceOrbit = false
-    this.scene.setPracticeEnabled(false)
+    this.algActing = false
+    // Free 360° orbit the moment Reset is pressed — do not lock the camera
+    // for the scramble flourish or after it lands.
+    this.practiceOrbit = true
+    this.scene.setPracticeEnabled(true)
+    this.padUnlocked = false
+    this.scene.setPadEnabled(false)
     this.emit()
     const my = this.token
     void (async () => {
@@ -510,33 +522,77 @@ export class LessonCoach {
   }
 
   // —— Playback ——
-  private async oneCycle(moves: Move[], token: number, returnHome = true) {
+  /** Drop on-cube words (orange / next / bottom) the moment a formula is shown or acted. */
+  private cancelWordLabels() {
+    if (!this.caption) return
+    this.caption = ''
+    this.emit()
+  }
+
+  private async playMoves(moves: Move[], viewRelative: boolean) {
+    if (!moves.length) return
+    this.cancelWordLabels()
+    const inherited = this.algActing
+    this.algActing = true
+    this.emit()
+    try {
+      await this.scene.play(moves, viewRelative, true)
+    } finally {
+      if (!inherited) {
+        this.algActing = false
+        this.emit()
+      }
+    }
+  }
+
+  private async oneCycle(moves: Move[], token: number, returnHome = true, projectYaw: number | null = null) {
     if (!moves.length) return this.token === token
+    this.cancelWordLabels()
     this.inputLocked = true
     await this.scene.settleMainAngle()
     if (this.token !== token) return false
     this.grayBefore(moves)
     this.advance = 'play'
+    this.cancelWordLabels()
     this.playFace = moves.length > 1 ? { kind: 'formula', moves, active: 0 } : { kind: 'play' }
+    this.algActing = moves.length > 1
     this.inputLocked = false
     this.emit()
     await this.wait()
     if (this.token !== token) return false
+    // The face-on cue is held only until Play. The formula then runs at its teaching yaw.
     this.scene.hideRepeatMark()
     this.scene.hideGuideArrow()
+    if (projectYaw != null) {
+      await this.scene.settleProjectPose(projectYaw)
+      if (this.token !== token) return false
+    } else {
+      this.scene.preserveView = false
+      await this.scene.settleMainAngle()
+      if (this.token !== token) return false
+    }
     this.inputLocked = true
+    this.cancelWordLabels()
     this.emit()
     for (let index = 0; index < moves.length; index++) {
       if (this.token !== token) return false
       this.advance = 'play'
-      if (moves.length > 1) this.playFace = { kind: 'formula', moves, active: index }
+      if (moves.length > 1) {
+        this.cancelWordLabels()
+        this.playFace = { kind: 'formula', moves, active: index }
+        this.algActing = true
+      }
       this.emit()
-      await this.scene.play([moves[index]], true, true)
+      await this.playMoves([moves[index]], true)
       if (this.token !== token) return false
       this.scene.reapplyTeachingColors()
     }
+    this.algActing = false
+    this.playFace = { kind: 'play' }
     if (this.step === 7 && movesEqual(moves, [...ALGS.twist])) this.scene.restoreColors()
     if (this.persistCornerMarks) this.refreshCornerStage()
+    this.inputLocked = false
+    this.emit()
     if (returnHome) return this.returnToMainAngle(token)
     await this.scene.settleMainAngle()
     return this.token === token
@@ -579,6 +635,7 @@ export class LessonCoach {
       guides?: boolean
       marks?: boolean
       firstFormula?: boolean
+      projectYaw?: number | null
     } = {},
   ) {
     const {
@@ -589,6 +646,7 @@ export class LessonCoach {
       guides = true,
       marks = true,
       firstFormula = false,
+      projectYaw = null,
     } = opts
     if (revealed) {
       if (marks && anchor) this.scene.showRepeatMark(anchor)
@@ -596,14 +654,22 @@ export class LessonCoach {
     } else if (guides && guideFrom && guideTo) {
       if (moves[0]) {
         this.advance = { move: moves[0] }
+        this.cancelWordLabels()
         this.playFace = { kind: 'formula', moves, active: 0 }
+        this.algActing = true
         this.emit()
       }
-      this.inputLocked = true
-      this.emit()
-      if (!(await this.pointAndHold(guideFrom, guideTo, token, firstFormula))) return false
+      if (firstFormula) {
+        // Highlight just ended. The guide can draw while Play is already live —
+        // the old point-and-hold locked the button for about two extra seconds.
+        void this.scene.guideArrow(guideFrom, guideTo, true)
+      } else {
+        this.inputLocked = true
+        this.emit()
+        if (!(await this.pointAndHold(guideFrom, guideTo, token, false))) return false
+      }
     }
-    return this.oneCycle(moves, token, returnHome)
+    return this.oneCycle(moves, token, returnHome, projectYaw)
   }
 
   private async playUntil(
@@ -617,9 +683,20 @@ export class LessonCoach {
       guideTo?: Vec3 | null
       anchor?: Vec3 | null
       firstFormula?: boolean
+      marks?: boolean
+      /** Lesson yaw the view-relative alg expects once Play leaves the face-on cue. */
+      projectYaw?: () => number
     } = {},
   ) {
-    const { stay = false, guideFrom = null, guideTo = null, anchor = null, firstFormula = false } = opts
+    const {
+      stay = false,
+      guideFrom = null,
+      guideTo = null,
+      anchor = null,
+      firstFormula = false,
+      marks = true,
+      projectYaw,
+    } = opts
     let revealed = false
     let spins = 0
     while (this.token === token) {
@@ -638,6 +715,7 @@ export class LessonCoach {
           if (this.token !== token) return false
         }
       }
+      const posed = projectYaw ? projectYaw() : null
       if (
         !(await this.runFormula(moves, token, revealed, {
           guideFrom: revealed ? null : guideFrom,
@@ -645,6 +723,8 @@ export class LessonCoach {
           anchor,
           returnHome: !stay,
           firstFormula,
+          marks,
+          projectYaw: posed,
         }))
       )
         return false
@@ -658,14 +738,14 @@ export class LessonCoach {
     this.playFace = { kind: 'play' }
     this.advance = 'whiteCross'
     this.emit()
-    await this.scene.play(moves, true, true)
+    await this.playMoves(moves, true)
   }
 
   private async playAuto(moves: Move[], viewRelative: boolean) {
     if (!moves.length) return
     this.inputLocked = true
     this.emit()
-    await this.scene.play(moves, viewRelative, true)
+    await this.playMoves(moves, viewRelative)
   }
 
   private async playLesson(moves: Move[], viewRelative: boolean) {
@@ -680,7 +760,7 @@ export class LessonCoach {
       if (this.token !== token) return
       this.inputLocked = true
       this.emit()
-      await this.scene.play([move], viewRelative, true)
+      await this.playMoves([move], viewRelative)
       if (this.persistCornerMarks) this.refreshCornerStage()
     }
   }
@@ -742,7 +822,6 @@ export class LessonCoach {
     const revealed = new Set<Face>()
     for (const drop of drops) {
       if (token !== this.token) return
-      this.caption = colorName(drop.side)
       revealed.add(drop.side)
       this.showDaisyWhites([...revealed])
       this.emit()
@@ -774,7 +853,6 @@ export class LessonCoach {
     token: number,
   ) {
     if (token !== this.token) return false
-    this.caption = colorName(drop.side)
     this.showStep1(this.whiteEdgeHomes())
     this.emit()
     await this.scene.animateYaw(drop.yaw)
@@ -919,7 +997,7 @@ export class LessonCoach {
       const more = CORNER_HOMES.some((h) => !cornerSolved(this.model, h))
       if (more) {
         this.celebrate('piece')
-        this.caption = 'Next'
+        this.caption = ''
         this.emit()
         if (!(await this.confirm(token))) return
       }
@@ -1089,20 +1167,22 @@ export class LessonCoach {
         this.showStep3(top)
         const placedAt = pieceHome(this.model, top)?.pos ?? top
         const solvedMid = MID_HOMES.filter((h) => midSolved(this.model, h)).length
-        let cueYaw: number
-        if (solvedMid >= 2) {
-          cueYaw = this.yawShowingCue(placedAt, top, [aligned.side, aligned.roof])
-        } else {
-          cueYaw = yawRight(v3(placedAt.x, 0, placedAt.z))
-        }
-        if (this.model.yaw !== cueYaw) {
-          await this.scene.settleMainAngle()
-          await this.scene.animateYaw(cueYaw)
-          if (token !== this.token) return
-        }
+        // Face the match before any pulse so the highlight stays face-on.
+        const previewYaw = solvedMid >= 2
+          ? bestVisibleYaw([
+              placedAt,
+              top,
+              FACE_NORMAL[aligned.side],
+              FACE_NORMAL[aligned.roof],
+            ])
+          : yawRight(v3(placedAt.x, 0, placedAt.z))
+        if (!(await this.faceMiddleHighlight(token, previewYaw, [placedAt, top]))) return
         this.showStep3(top)
         this.middleSlide = aligned.right ? 'right' : 'left'
         this.emit()
+        const from = pieceHome(this.model, top)?.pos ?? top
+        await this.scene.narrowArrow(from, top, this.scene.localCameraDir())
+        if (token !== this.token) return
         await this.scene.pulseStickers(
           [
             { home: top, face: aligned.side },
@@ -1120,19 +1200,15 @@ export class LessonCoach {
         )
         if (token !== this.token) return
         const alg = aligned.right ? [...ALGS.middleRight] : [...ALGS.middleLeft]
-        this.caption = ''
-        const from = pieceHome(this.model, top)?.pos ?? top
+        this.cancelWordLabels()
         if (alg[0]) {
           this.advance = { move: alg[0] }
           this.playFace = { kind: 'formula', moves: alg, active: 0 }
+          this.algActing = true
           this.emit()
         }
         this.inputLocked = true
         this.emit()
-        if (!(await this.pointAndHold(from, top, token))) return
-        await this.scene.settleMainAngle()
-        await this.scene.animateYaw(aligned.yaw)
-        if (token !== this.token) return
         this.showStep3(top)
         if (
           !(await this.playUntil(
@@ -1140,7 +1216,11 @@ export class LessonCoach {
             alg,
             () => middlePlan(this.model, top)?.yaw ?? this.model.yaw,
             () => midSolved(this.model, top),
-            { stay: true, anchor: top },
+            {
+              stay: true,
+              marks: false,
+              projectYaw: () => middlePlan(this.model, top)?.yaw ?? this.model.yaw,
+            },
           ))
         )
           return
@@ -1152,7 +1232,7 @@ export class LessonCoach {
         const more = MID_HOMES.some((h) => !midSolved(this.model, h))
         if (more) {
           this.celebrate('piece')
-          this.caption = 'Next'
+          this.caption = ''
           const next = MID_HOMES.find((h) => !midSolved(this.model, h))
           if (next) this.showStep3(next)
           this.emit()
@@ -1165,15 +1245,16 @@ export class LessonCoach {
         this.showStep3(stuck)
         this.inputLocked = true
         this.caption = ''
-        this.emit()
-        const cueYaw = yawRight(v3(pos.x, 0, pos.z))
-        if (this.model.yaw !== cueYaw) {
-          await this.scene.settleMainAngle()
-          await this.scene.animateYaw(cueYaw)
-          if (token !== this.token) return
-        }
         this.middleSlide = 'right'
         this.emit()
+        const shown = pieceHome(this.model, stuck)?.pos ?? pos
+        const faces = this.middleColorPairs(stuck).map((pair) => pair[0].face)
+        const centers = faces.map((face) => FACE_NORMAL[face])
+        const yaw = bestVisibleYaw([shown, stuck, ...centers])
+        if (!(await this.faceMiddleHighlight(token, yaw, [shown, stuck]))) return
+        this.showStep3(stuck)
+        await this.scene.narrowArrow(shown, stuck, this.scene.localCameraDir())
+        if (token !== this.token) return
         for (const pair of this.middleColorPairs(stuck)) {
           await this.scene.pulseStickers(pair, 3)
           if (token !== this.token) return
@@ -1184,11 +1265,7 @@ export class LessonCoach {
           this.playFace = { kind: 'formula', moves: alg, active: 0 }
           this.emit()
         }
-        const shown = pieceHome(this.model, stuck)?.pos ?? pos
-        if (!(await this.pointAndHold(shown, stuck, token))) return
-        await this.scene.settleMainAngle()
-        await this.scene.animateYaw(yawFor(pos.x, pos.z))
-        if (token !== this.token) return
+        this.showStep3(stuck)
         if (
           !(await this.playUntil(
             token,
@@ -1201,7 +1278,14 @@ export class LessonCoach {
               const p = pieceHome(this.model, stuck)
               return (p && p.pos.y === 1) || midSolved(this.model, stuck)
             },
-            { stay: true, anchor: stuck },
+            {
+              stay: true,
+              marks: false,
+              projectYaw: () => {
+                const p = pieceHome(this.model, stuck)?.pos
+                return p ? yawFor(p.x, p.z) : this.model.yaw
+              },
+            },
           ))
         )
           return
@@ -1235,9 +1319,13 @@ export class LessonCoach {
       ])
   }
 
-  private yawShowingCue(from: Vec3, _to: Vec3, _faces: Face[]): number {
-    // Simplified: prefer yaw that puts `to` on the right
-    return yawRight(v3(from.x, 0, from.z))
+  /** Spin once, continuously, into the face-on pose. Hold it until the formula acts. */
+  private async faceMiddleHighlight(token: number, yaw: number, points: Vec3[]) {
+    this.scene.preserveView = false
+    await this.scene.spinToCuePose(yaw, points)
+    if (this.token !== token) return false
+    this.scene.preserveView = true
+    return true
   }
 
   private ensureLeftToRightMiddle() {
@@ -1718,7 +1806,7 @@ export class LessonCoach {
       if (!twisted(this.model, ufrSlot(this.model))) {
         const turns = uMovesUntilTwistedAtUFR(this.model)
         if (turns.length) {
-          this.caption = 'Next'
+          this.caption = ''
           this.showFullCube()
           await this.scene.settleMainAngle()
           this.showFullCube()
@@ -1764,8 +1852,6 @@ export class LessonCoach {
           }
           break
         }
-        this.caption = 'Bottom looks messy'
-        this.emit()
       }
       const more = twistedSlots(this.model)
       this.showFullCube()

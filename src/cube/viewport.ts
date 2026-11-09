@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { cuePose } from './cuePose'
 import {
   COLORS,
   FACE_NORMAL,
@@ -129,9 +130,6 @@ export class CubeViewport {
   private raf = 0
   private disposed = false
   practiceOrbit = true
-  private dragging = false
-  private lastX = 0
-  private lastY = 0
   private camYaw: number
   private camPitch: number
   private distance = 7.2
@@ -149,6 +147,12 @@ export class CubeViewport {
   private arrowNode: THREE.Object3D | null = null
   private cubeYawQuarters = 0
   private cubeFlipped = false
+  private orbitRig: THREE.Group
+  private pointers = new Map<number, { x: number; y: number }>()
+  private lastCentroid = { x: 0, y: 0 }
+  private orbitGesture: 'none' | 'orbit' | 'yaw' = 'none'
+  /** While set, settleMainAngle keeps the middle-layer cue framing. */
+  preserveView = false
   private jobs: Array<() => Promise<void>> = []
   private draining = false
 
@@ -164,17 +168,20 @@ export class CubeViewport {
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.05, 80)
     this.root = new THREE.Group()
+    this.orbitRig = new THREE.Group()
     this.cubeRoot = new THREE.Group()
     this.scene.add(this.root)
-    this.root.add(this.cubeRoot)
+    this.root.add(this.orbitRig)
+    this.orbitRig.add(this.cubeRoot)
 
-    const ambient = new THREE.AmbientLight(0xfafafa, 0.72)
+    // Pure white lights so sticker hexes stay saturated (a warm key muddies them).
+    const ambient = new THREE.AmbientLight(0xffffff, 0.78)
     this.scene.add(ambient)
-    const key = new THREE.DirectionalLight(0xfffbf5, 0.78)
-    key.position.set(0.4, 1.2, 0.15)
+    const key = new THREE.DirectionalLight(0xffffff, 1.45)
+    key.position.set(0.55, 1.25, 0.65)
     this.camera.add(key)
-    const fill = new THREE.DirectionalLight(0xebf2ff, 0.38)
-    fill.position.set(-1.4, -0.4, 0.2)
+    const fill = new THREE.DirectionalLight(0xffffff, 0.28)
+    fill.position.set(-1.1, 0.15, 0.55)
     this.camera.add(fill)
     this.scene.add(this.camera)
 
@@ -196,22 +203,25 @@ export class CubeViewport {
   private plasticMat() {
     return new THREE.MeshPhysicalMaterial({
       color: COLORS.body,
-      roughness: 0.36,
-      metalness: 0.02,
-      clearcoat: 0.42,
-      clearcoatRoughness: 0.38,
-      specularIntensity: 0.16,
+      roughness: 0.45,
+      metalness: 0,
+      clearcoat: 0.2,
+      clearcoatRoughness: 0.42,
+      specularIntensity: 0.1,
     })
   }
 
   private stickerMat(face: Face) {
+    const color = faceColor(face)
     return new THREE.MeshPhysicalMaterial({
-      color: faceColor(face),
-      roughness: 0.32,
+      color,
+      emissive: color.clone(),
+      emissiveIntensity: 0.18,
+      roughness: 0.36,
       metalness: 0,
-      clearcoat: 0.3,
-      clearcoatRoughness: 0.34,
-      specularIntensity: 0.14,
+      clearcoat: 0.04,
+      clearcoatRoughness: 0.6,
+      specularIntensity: 0.03,
       side: THREE.FrontSide,
     })
   }
@@ -255,6 +265,7 @@ export class CubeViewport {
     this.token.n++
     this.hideGuideArrow()
     this.hideRepeatMark()
+    this.preserveView = false
     this.suppressMarks = false
     this.watchHomes = null
     this.watchStickers = null
@@ -268,6 +279,7 @@ export class CubeViewport {
   }
   setPracticeEnabled(on: boolean) {
     this.practiceOrbit = on
+    if (!on) this.orbitRig.quaternion.identity()
   }
   setRepeatMarksSuppressed(suppressed: boolean) {
     this.suppressMarks = suppressed
@@ -311,6 +323,20 @@ export class CubeViewport {
     /* twist step clears lock — restore handled by coach */
   }
 
+  /** Lit stickers keep their hue. Gray lock is a flat gray with the color emissive off. */
+  private applyStickerLook(mat: THREE.MeshPhysicalMaterial, face: Face, gray: boolean) {
+    if (gray) {
+      mat.color.set(COLORS.grayed)
+      mat.emissive.set(0x000000)
+      mat.emissiveIntensity = 0
+      return
+    }
+    const color = faceColor(face, false)
+    mat.color.copy(color)
+    mat.emissive.copy(color)
+    mat.emissiveIntensity = 0.18
+  }
+
   private syncColors() {
     for (const c of this.cubies) {
       const home = c.userData.home
@@ -325,7 +351,7 @@ export class CubeViewport {
           // Exact keep set only (coach passes GUIDE_CENTERS explicitly) — iOS grayExcept.
           lit = this.watchHomes.has(hk)
         }
-        mat.color = faceColor(face, !lit)
+        this.applyStickerLook(mat, face, !lit)
       }
     }
   }
@@ -379,23 +405,96 @@ export class CubeViewport {
   }
 
   private updateFit(w: number, h: number) {
+    if (w < 8 || h < 8) return
     const fov = (this.camera.fov * Math.PI) / 180
     const aspect = w / h
     const verticalHalf = Math.tan(fov / 2)
-    const horizontalHalf = verticalHalf * Math.max(aspect, 0.05)
+    const horizontalHalf = verticalHalf * aspect
     const limit = Math.min(verticalHalf, horizontalHalf)
     this.distance = (2.55 * 1.18) / Math.max(limit, 0.08)
   }
 
-  resetCamera() {
+  /** Normal iOS lesson framing: rest angle, FOV 35, fit distance, no leftover orbit. */
+  resetTeachingFrame() {
+    this.preserveView = false
+    this.camera.fov = 35
+    this.camera.updateProjectionMatrix()
     const rest = restYawPitch()
     this.camYaw = rest.yaw
     this.camPitch = rest.pitch
+    this.orbitRig.quaternion.identity()
+    const parent = this.canvas.parentElement
+    const w = Math.max(1, parent?.clientWidth || this.canvas.clientWidth || 320)
+    const h = Math.max(1, parent?.clientHeight || this.canvas.clientHeight || 320)
+    this.camera.aspect = w / Math.max(h, 1)
+    this.updateFit(w, h)
     this.placeCamera()
   }
 
+  resetCamera() {
+    this.resetTeachingFrame()
+  }
+
   async settleMainAngle() {
+    if (this.preserveView) return
     this.resetCamera()
+  }
+
+  /**
+   * One continuous spin into the face-on middle-layer pose.
+   * The lesson quarter-turn and the cue orbit used to be separate, so the
+   * orbit popped in after the yaw had already eased to a stop. Distance and
+   * field of view are left alone.
+   */
+  async spinToCuePose(yaw: number, localPoints: Vec3[]) {
+    const pose = cuePose(yaw, this.model.flipped, localPoints)
+    const start = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
+    this.orbitRig.quaternion.identity()
+    this.cubeRoot.quaternion.copy(start)
+    const my = this.token.n
+    const turn = start.angleTo(pose.visual)
+    if (turn > 0.012) {
+      const quarters = turn / (Math.PI / 2)
+      await this.slerpTo(pose.visual, this.teachMs(Math.max(0.5, 0.78 * quarters)), my)
+      if (this.token.n !== my) return
+    }
+    this.model.yaw = pose.dest
+    this.cubeYawQuarters = pose.dest
+    this.cubeRoot.quaternion.copy(pose.yawQuat)
+    this.orbitRig.quaternion.copy(pose.orbitQuat)
+  }
+
+  /**
+   * Leave the face-on cue and land on the lesson yaw the formula was written for.
+   * Orbit is folded into the cube first so the return starts from the view Tony
+   * is looking at, then the camera refits to the normal teaching frame.
+   */
+  async settleProjectPose(yaw: number) {
+    this.preserveView = false
+    const visual = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
+    this.orbitRig.quaternion.identity()
+    this.cubeRoot.quaternion.copy(visual)
+    this.camera.fov = 35
+    this.camera.updateProjectionMatrix()
+    const rest = restYawPitch()
+    this.camYaw = rest.yaw
+    this.camPitch = rest.pitch
+    const parent = this.canvas.parentElement
+    const w = Math.max(1, parent?.clientWidth || this.canvas.clientWidth || 320)
+    const h = Math.max(1, parent?.clientHeight || this.canvas.clientHeight || 320)
+    this.camera.aspect = w / Math.max(h, 1)
+    this.updateFit(w, h)
+    this.placeCamera()
+    const dest = ((yaw % 4) + 4) % 4
+    const target = this.orientationQuat(dest, this.model.flipped)
+    const my = this.token.n
+    if (this.cubeRoot.quaternion.angleTo(target) > 0.02) {
+      await this.slerpTo(target, this.teachMs(0.62), my)
+      if (this.token.n !== my) return
+    }
+    this.model.yaw = dest
+    this.cubeYawQuarters = dest
+    this.applyOrientationInstant()
   }
 
   async restCamera() {
@@ -415,32 +514,67 @@ export class CubeViewport {
 
   private bindInput() {
     const el = this.canvas
-    const down = (x: number, y: number) => {
-      if (!this.practiceOrbit || this.animating) return
-      this.dragging = true
-      this.lastX = x
-      this.lastY = y
+    const centroid = () => {
+      let x = 0
+      let y = 0
+      for (const p of this.pointers.values()) {
+        x += p.x
+        y += p.y
+      }
+      const n = this.pointers.size || 1
+      return { x: x / n, y: y / n }
     }
-    const move = (x: number, y: number) => {
-      if (!this.dragging) return
-      const dx = x - this.lastX
-      const dy = y - this.lastY
-      this.lastX = x
-      this.lastY = y
-      this.camYaw -= dx * 0.008
-      this.camPitch = Math.max(-0.2, Math.min(1.2, this.camPitch - dy * 0.008))
-      this.placeCamera()
-    }
-    const up = () => {
-      this.dragging = false
+    // Quaternion tumble: no pitch clamp, so a drag can spin the cube through
+    // a full 360°. Two fingers keep the earlier free-yaw (spin around Y only).
+    const applyOrbit = (dx: number, dy: number, yawOnly: boolean) => {
+      // Re-read the camera basis every frame. These are the on-screen axes
+      // (camera local Y = up, local X = right), not the cube's local axes.
+      // Finger up (dy < 0) moves the facing point toward the top of the screen.
+      // Finger right (dx > 0) moves it toward the right edge.
+      const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion).normalize()
+      const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion).normalize()
+      if (dx !== 0) {
+        const yawQ = new THREE.Quaternion().setFromAxisAngle(screenUp, dx * 0.01)
+        this.orbitRig.quaternion.premultiply(yawQ)
+      }
+      if (yawOnly || dy === 0) return
+      const pitchQ = new THREE.Quaternion().setFromAxisAngle(screenRight, dy * 0.01)
+      this.orbitRig.quaternion.premultiply(pitchQ)
     }
     el.addEventListener('pointerdown', (e) => {
-      el.setPointerCapture(e.pointerId)
-      down(e.clientX, e.clientY)
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      try {
+        el.setPointerCapture(e.pointerId)
+      } catch {
+        /* pointer already captured */
+      }
+      this.lastCentroid = centroid()
+      if (!this.practiceOrbit || this.animating) {
+        this.orbitGesture = 'none'
+        return
+      }
+      this.orbitGesture = this.pointers.size >= 2 ? 'yaw' : 'orbit'
     })
-    el.addEventListener('pointermove', (e) => move(e.clientX, e.clientY))
-    el.addEventListener('pointerup', up)
-    el.addEventListener('pointercancel', up)
+    el.addEventListener('pointermove', (e) => {
+      if (!this.pointers.has(e.pointerId)) return
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      const next = centroid()
+      const dx = next.x - this.lastCentroid.x
+      const dy = next.y - this.lastCentroid.y
+      this.lastCentroid = next
+      if (!this.practiceOrbit || this.animating || this.orbitGesture === 'none') return
+      applyOrbit(dx, dy, this.pointers.size >= 2 || this.orbitGesture === 'yaw')
+    })
+    const end = (e: PointerEvent) => {
+      this.pointers.delete(e.pointerId)
+      if (this.pointers.size === 0) this.orbitGesture = 'none'
+      else if (this.practiceOrbit && !this.animating) {
+        this.orbitGesture = this.pointers.size >= 2 ? 'yaw' : 'orbit'
+        this.lastCentroid = centroid()
+      }
+    }
+    el.addEventListener('pointerup', end)
+    el.addEventListener('pointercancel', end)
     window.addEventListener('resize', () => this.resize())
   }
 
@@ -593,12 +727,13 @@ export class CubeViewport {
         direction = right.clone().negate()
         break
     }
-    // World-space face normal after cubeRoot orientation
+    // World-space face normal after the full visual pose (orbit + lesson yaw).
+    const visual = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
     let best: Face = 'F'
     let bestDot = -2
     for (const face of Object.keys(FACE_NORMAL) as Face[]) {
       const n = FACE_NORMAL[face]
-      const world = new THREE.Vector3(n.x, n.y, n.z).applyQuaternion(this.cubeRoot.quaternion).normalize()
+      const world = new THREE.Vector3(n.x, n.y, n.z).applyQuaternion(visual).normalize()
       const dot = world.dot(direction)
       if (dot > bestDot) {
         bestDot = dot
@@ -912,7 +1047,7 @@ export class CubeViewport {
       const mesh = cubie?.userData.stickers.get(s.face)
       if (!mesh) continue
       const mat = mesh.material as THREE.MeshPhysicalMaterial
-      mat.color = faceColor(s.face, gray)
+      this.applyStickerLook(mat, s.face, gray)
     }
   }
 
@@ -920,20 +1055,28 @@ export class CubeViewport {
     const my = this.token.n
     const saved = this.cubeRoot.quaternion.clone()
     const savedYaw = this.model.yaw
-    const right = new THREE.Vector3().crossVectors(
-      new THREE.Vector3(0, 1, 0),
-      REST.clone().setY(0).normalize(),
-    ).normalize()
-    // tip toward camera
-    const tip = new THREE.Quaternion().setFromAxisAngle(right, 1.15)
-    const base = this.orientationQuat(savedYaw, this.model.flipped)
-    const tipped = tip.clone().multiply(base)
-    await this.slerpTo(tipped, this.teachMs(0.62), my)
+    const savedFlip = this.model.flipped
+    // Spin the cube so the bottom face (local -Y) points at the camera.
+    // The old +1.15 tip rotated the top toward Tony instead.
+    const bottomWorld = new THREE.Vector3(0, -1, 0).applyQuaternion(saved).normalize()
+    const camDir = this.camera.position.clone().normalize()
+    let align = new THREE.Quaternion().setFromUnitVectors(bottomWorld, camDir)
+    if (bottomWorld.dot(camDir) > 0.82) {
+      const axis = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), camDir)
+      if (axis.lengthSq() < 1e-6) axis.set(1, 0, 0)
+      align.setFromAxisAngle(axis.normalize(), Math.PI * 0.72)
+    }
+    const tipped = align.clone().multiply(saved)
+    await this.slerpTo(tipped, Math.max(520, this.teachMs(0.55)), my)
     if (this.token.n !== my) return
-    const hold = Math.max(350, 1000 * SPEED_FACTOR[this.teachSpeed])
+    const hold = Math.max(1000, 1200 * SPEED_FACTOR[this.teachSpeed])
     if (!(await sleep(hold, this.token, my))) return
-    await this.slerpTo(saved, this.teachMs(0.55), my)
+    await this.slerpTo(saved, Math.max(420, this.teachMs(0.45)), my)
+    if (this.token.n !== my) return
     this.model.yaw = savedYaw
+    this.model.flipped = savedFlip
+    this.cubeYawQuarters = savedYaw
+    this.cubeFlipped = savedFlip
     this.applyOrientationInstant()
   }
 
@@ -985,6 +1128,76 @@ export class CubeViewport {
       this.cubeRoot.remove(this.arrowNode)
       this.arrowNode = null
     }
+  }
+
+  /**
+   * Purple middle-layer arrow from the up-edge center to the left-edge center.
+   * Draws along that path. Thicker than the old hairline, still a narrow cue.
+   */
+  async narrowArrow(from: Vec3, to: Vec3, facing: Vec3) {
+    this.hideGuideArrow()
+    const g = new THREE.Group()
+    const mat = new THREE.MeshBasicMaterial({
+      color: COLORS.purple,
+      depthTest: false,
+      depthWrite: false,
+    })
+    const face = new THREE.Vector3(facing.x, facing.y, facing.z)
+    if (face.lengthSq() < 1e-6) face.set(0, 0, 1)
+    face.normalize()
+    const start = new THREE.Vector3(from.x, from.y, from.z).add(face.clone().multiplyScalar(0.5))
+    const end = new THREE.Vector3(to.x, to.y, to.z).add(face.clone().multiplyScalar(0.5))
+    const mid = start.clone().add(end).multiplyScalar(0.5).add(face.clone().multiplyScalar(0.28))
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end)
+    const pts = curve.getPoints(20)
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]
+      const b = pts[i + 1]
+      const dir = b.clone().sub(a)
+      const len = dir.length()
+      if (len < 0.01) continue
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, len, 8), mat)
+      cyl.position.copy(a).add(b).multiplyScalar(0.5)
+      cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize())
+      cyl.renderOrder = 8
+      g.add(cyl)
+    }
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 10), mat)
+    cone.position.copy(end)
+    const tipDir = end.clone().sub(pts[pts.length - 2] ?? mid).normalize()
+    cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tipDir)
+    cone.renderOrder = 8
+    g.add(cone)
+    this.cubeRoot.add(g)
+    this.arrowNode = g
+    const my = this.token.n
+    for (const n of g.children) {
+      n.visible = false
+      n.scale.setScalar(0.4)
+    }
+    for (const n of g.children) {
+      if (this.token.n !== my) return
+      n.visible = true
+      n.scale.setScalar(1)
+      await sleep(22, this.token, my)
+    }
+  }
+
+  /** Cube-local direction from the origin toward the teaching camera. */
+  localCameraDir(): Vec3 {
+    const cam = REST.clone().normalize()
+    const q = this.orbitRig.quaternion.clone().multiply(this.cubeRoot.quaternion)
+    cam.applyQuaternion(q.invert())
+    return { x: cam.x, y: cam.y, z: cam.z }
+  }
+
+  /**
+   * Spin the cube (not the teaching yaw) so the narrow arrow and the solving
+   * pieces face the camera. Distance and FOV stay at the current teaching frame.
+   */
+  frameCues(localPoints: Vec3[]) {
+    const pose = cuePose(this.model.yaw, this.model.flipped, localPoints)
+    this.orbitRig.quaternion.copy(pose.orbitQuat)
   }
 
   showRepeatMark(near: Vec3) {

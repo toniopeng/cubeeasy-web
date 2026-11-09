@@ -1,8 +1,19 @@
-/** Two full course starts are free. The third start waits for lifetime unlock. (matches CourseStore) */
+/**
+ * One finished free course, then the paywall.
+ * Starting or Reset does not consume it. Lifetime bypasses the limit.
+ * Stored only in this browser (localStorage). A private window is a new store.
+ */
 
 const KEY = 'cubeeasy.web.v2'
 
 export type EntitlementState = {
+  /** Finished free courses. Start and Reset do not change this. */
+  completedRuns: number
+  /**
+   * Legacy start counter from the two-start build.
+   * Kept so a later reload still migrates used >= 1 as exhausted.
+   * New sessions do not increment it.
+   */
   startedRuns: number
   runInProgress: boolean
   isLifetime: boolean
@@ -11,6 +22,7 @@ export type EntitlementState = {
 
 function empty(): EntitlementState {
   return {
+    completedRuns: 0,
     startedRuns: 0,
     runInProgress: false,
     isLifetime: false,
@@ -18,32 +30,45 @@ function empty(): EntitlementState {
   }
 }
 
+function migrate(parsed: Partial<EntitlementState> & { completedRuns?: number }): EntitlementState {
+  const started = Number(parsed.startedRuns) || 0
+  const explicit = parsed.completedRuns
+  let completed = Number(explicit)
+  if (!Number.isFinite(completed)) {
+    completed = started >= 1 ? 1 : 0
+  } else if (started >= 1) {
+    completed = Math.max(completed, 1)
+  } else {
+    completed = Math.max(0, completed)
+  }
+  return {
+    completedRuns: completed,
+    startedRuns: started,
+    runInProgress: false,
+    isLifetime: Boolean(parsed.isLifetime),
+    updatedAt: parsed.updatedAt || new Date().toISOString(),
+  }
+}
+
 export function loadEntitlement(): EntitlementState {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) {
-      // migrate v1 completedRuns → startedRuns
       const v1 = localStorage.getItem('cubeeasy.web.v1')
       if (v1) {
         const p = JSON.parse(v1) as { completedRuns?: number; isLifetime?: boolean }
-        const next: EntitlementState = {
-          startedRuns: Number(p.completedRuns) || 0,
-          runInProgress: false,
+        const used = Number(p.completedRuns) || 0
+        const next = migrate({
+          completedRuns: used >= 1 ? 1 : 0,
+          startedRuns: used,
           isLifetime: Boolean(p.isLifetime),
-          updatedAt: new Date().toISOString(),
-        }
+        })
         saveEntitlement(next)
         return next
       }
       return empty()
     }
-    const parsed = JSON.parse(raw) as Partial<EntitlementState>
-    return {
-      startedRuns: Number(parsed.startedRuns) || 0,
-      runInProgress: Boolean(parsed.runInProgress),
-      isLifetime: Boolean(parsed.isLifetime),
-      updatedAt: parsed.updatedAt || new Date().toISOString(),
-    }
+    return migrate(JSON.parse(raw) as Partial<EntitlementState>)
   } catch {
     return empty()
   }
@@ -53,25 +78,29 @@ export function saveEntitlement(state: EntitlementState): void {
   localStorage.setItem(KEY, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }))
 }
 
-export function canStartRun(state: EntitlementState): boolean {
-  return state.isLifetime || state.startedRuns < 2 || state.runInProgress
+/** Lifetime, or the one free course is not finished yet. */
+export function canStartCourse(state: EntitlementState): boolean {
+  return state.isLifetime || state.completedRuns < 1
 }
 
-export function beginRun(state: EntitlementState): EntitlementState {
-  const next = { ...state, startedRuns: state.startedRuns + 1, runInProgress: true }
-  saveEntitlement(next)
-  return next
+/**
+ * A start does not use up the free course. Kept so callers cannot
+ * accidentally increment the old start counter.
+ */
+export function noteCourseStart(state: EntitlementState): EntitlementState {
+  return state
 }
 
-export function abandonRun(state: EntitlementState): EntitlementState {
-  const next = { ...state, runInProgress: false }
-  saveEntitlement(next)
-  return next
+/** Reset does not use up the free course and does not clear a finished one. */
+export function noteReset(state: EntitlementState): EntitlementState {
+  return state
 }
 
-export function finishRun(state: EntitlementState): EntitlementState {
-  if (!state.runInProgress) return state
-  const next = { ...state, runInProgress: false }
+/** Count one finished free course. A second call does not count again. */
+export function completeFreeCourse(state: EntitlementState): EntitlementState {
+  if (state.isLifetime) return state
+  if (state.completedRuns >= 1) return state
+  const next = { ...state, completedRuns: 1, runInProgress: false }
   saveEntitlement(next)
   return next
 }
@@ -82,7 +111,7 @@ export function unlockLifetime(state: EntitlementState): EntitlementState {
   return next
 }
 
-export function freeRunsRemaining(state: EntitlementState): number {
+export function freeCoursesRemaining(state: EntitlementState): number {
   if (state.isLifetime) return Infinity
-  return Math.max(0, 2 - state.startedRuns)
+  return state.completedRuns >= 1 ? 0 : 1
 }

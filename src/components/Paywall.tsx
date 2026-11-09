@@ -1,18 +1,20 @@
 import { useState } from 'react'
 import { LIFETIME_PRICE_LABEL } from '../data/course'
-import { openCheckout, paddleConfigured } from '../lib/paddle'
+import { openCheckout } from '../lib/paddle'
 
 type Props = {
   open: boolean
   onClose: () => void
-  onUnlockDemo: () => void
+  /** Persist Lifetime after Paddle checkout.completed (or a local stub). */
+  onUnlocked: () => void
+  /** Local stub only. Hidden once a real Paddle price is configured. */
+  allowSimulate?: boolean
 }
 
 /** Matches iOS PaywallView: Unlock CubeEasy, yellow Unlock, Restore, Not now. */
-export function Paywall({ open, onClose, onUnlockDemo }: Props) {
+export function Paywall({ open, onClose, onUnlocked, allowSimulate = false }: Props) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
-  const configured = paddleConfigured()
 
   if (!open) return null
 
@@ -23,7 +25,7 @@ export function Paywall({ open, onClose, onUnlockDemo }: Props) {
       const result = await openCheckout({
         onEvent: (e) => {
           const ev = e as { name?: string }
-          if (ev?.name === 'checkout.completed') onUnlockDemo()
+          if (ev?.name === 'checkout.completed') onUnlocked()
         },
       })
       if (result.mode === 'placeholder') {
@@ -46,17 +48,22 @@ export function Paywall({ open, onClose, onUnlockDemo }: Props) {
           </button>
         </div>
         <p className="paywall-body">
-          Two free runs are done. Unlock the course of life. One purchase, no subscription, no ads.
+          Your free course is finished. Unlock the course of life. One purchase, no subscription, no ads.
         </p>
         <button className="paywall-unlock" disabled={busy} onClick={checkout}>
           {busy ? '…' : `Unlock · ${LIFETIME_PRICE_LABEL}`}
         </button>
-        {!configured && (
-          <button className="paywall-restore" onClick={onUnlockDemo}>
+        {allowSimulate && (
+          <button className="paywall-restore" onClick={onUnlocked}>
             Simulate purchase (sandbox)
           </button>
         )}
-        <button className="paywall-restore" onClick={() => setNote('Restore is available after Paddle is connected.')}>
+        <button
+          className="paywall-restore"
+          onClick={() =>
+            setNote('To restore Lifetime on this browser, email taopeng46@gmail.com with your Paddle receipt.')
+          }
+        >
           Restore Purchases
         </button>
         <button className="paywall-notnow" onClick={onClose}>
